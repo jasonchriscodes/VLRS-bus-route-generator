@@ -1,3 +1,6 @@
+import 'dart:convert';
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:open_route_service/open_route_service.dart';
@@ -78,10 +81,10 @@ class _MyHomePageState extends State<MyHomePage> {
     }
 
     print(data);
-    // String jsonData = jsonEncode(data);
-    // String filePath = '/path/ke/file.json';
-    // File file = File(filePath);
-    // file.writeAsString(jsonData);
+    String jsonData = jsonEncode(data);
+    String filePath = '/path/ke/file.json';
+    File file = File(filePath);
+    file.writeAsString(jsonData);
 
     setState(() {
       this.routePoints = Future.value(routePoints);
