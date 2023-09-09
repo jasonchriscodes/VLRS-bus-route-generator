@@ -94,22 +94,22 @@ class _MyHomePageState extends State<MyHomePage> {
       appBar: AppBar(
         title: Text(widget.title),
       ),
-      body: Expanded(
-        child: Column(
-          children: [
-            TextFormField(
-              controller: startLatController,
-            ),
-            TextFormField(
-              controller: startLngController,
-            ),
-            TextFormField(
-              controller: endLatController,
-            ),
-            TextFormField(
-              controller: endLngController,
-            ),
-            FutureBuilder(
+      body: Column(
+        children: [
+          TextFormField(
+            controller: startLatController,
+          ),
+          TextFormField(
+            controller: startLngController,
+          ),
+          TextFormField(
+            controller: endLatController,
+          ),
+          TextFormField(
+            controller: endLngController,
+          ),
+          Expanded(
+            child: FutureBuilder(
               future: routePoints,
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) {
@@ -138,8 +138,8 @@ class _MyHomePageState extends State<MyHomePage> {
                 );
               },
             ),
-          ],
-        ),
+          ),
+        ],
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: () {
