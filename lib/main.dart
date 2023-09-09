@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:latlong2/latlong.dart';
+import 'package:open_route_service/open_route_service.dart';
 
 void main() {
   runApp(const MyApp());
@@ -7,29 +9,12 @@ void main() {
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
-  // This widget is the root of your application.
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'Flutter Demo',
       theme: ThemeData(
-        // This is the theme of your application.
-        //
-        // TRY THIS: Try running your application with "flutter run". You'll see
-        // the application has a blue toolbar. Then, without quitting the app,
-        // try changing the seedColor in the colorScheme below to Colors.green
-        // and then invoke "hot reload" (save your changes or press the "hot
-        // reload" button in a Flutter-supported IDE, or press "r" if you used
-        // the command line to start the app).
-        //
-        // Notice that the counter didn't reset back to zero; the application
-        // state is not lost during the reload. To reset the state, use hot
-        // restart instead.
-        //
-        // This works for code too, not just values: Most code changes can be
-        // tested with just a hot reload.
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
-        useMaterial3: true,
+        primarySwatch: Colors.blue,
       ),
       home: const MyHomePage(title: 'Flutter Demo Home Page'),
     );
@@ -39,15 +24,6 @@ class MyApp extends StatelessWidget {
 class MyHomePage extends StatefulWidget {
   const MyHomePage({super.key, required this.title});
 
-  // This widget is the home page of your application. It is stateful, meaning
-  // that it has a State object (defined below) that contains fields that affect
-  // how it looks.
-
-  // This class is the configuration for the state. It holds the values (in this
-  // case the title) provided by the parent (in this case the App widget) and
-  // used by the build method of the State. Fields in a Widget subclass are
-  // always marked "final".
-
   final String title;
 
   @override
@@ -55,71 +31,128 @@ class MyHomePage extends StatefulWidget {
 }
 
 class _MyHomePageState extends State<MyHomePage> {
-  int _counter = 0;
+  Future<List<LatLng>> routePoints = Future.value([]);
+  final startLatController = TextEditingController();
+  final startLngController = TextEditingController();
+  final endLatController = TextEditingController();
+  final endLngController = TextEditingController();
 
-  void _incrementCounter() {
+  @override
+  void initState() {
+    super.initState();
+    generateRoute(
+      startLatitude: '51.1324',
+      startLongitude: '13.4145',
+      endLatitude: '51.1324',
+      endLongitude: '13.4145',
+    );
+  }
+
+  Future<void> generateRoute({
+    required String startLatitude,
+    required String startLongitude,
+    required String endLatitude,
+    required String endLongitude,
+  }) async {
+    // Initialize the openrouteservice with your API key.
+    final OpenRouteService client = OpenRouteService(
+        apiKey: '5b3ce3597851110001cf6248388ec6c4e06043d3b87eb77a95a06a02');
+    double startLat = double.parse(startLatitude);
+    double startLng = double.parse(startLongitude);
+    double endLat = double.parse(endLatitude);
+    double endLng = double.parse(endLongitude);
+
+    final List<ORSCoordinate> routeCoordinates =
+        await client.directionsRouteCoordsGet(
+      startCoordinate: ORSCoordinate(latitude: startLat, longitude: startLng),
+      endCoordinate: ORSCoordinate(latitude: endLat, longitude: endLng),
+    );
+
+    final List<LatLng> routePoints = routeCoordinates
+        .map((coordinate) => LatLng(coordinate.latitude, coordinate.longitude))
+        .toList();
+
+    List<Map<String, double>> data = [];
+    for (var element in routePoints) {
+      data.add({'latitude': element.latitude, 'longitude': element.longitude});
+    }
+
+    print(data);
+    // String jsonData = jsonEncode(data);
+    // String filePath = '/path/ke/file.json';
+    // File file = File(filePath);
+    // file.writeAsString(jsonData);
+
     setState(() {
-      // This call to setState tells the Flutter framework that something has
-      // changed in this State, which causes it to rerun the build method below
-      // so that the display can reflect the updated values. If we changed
-      // _counter without calling setState(), then the build method would not be
-      // called again, and so nothing would appear to happen.
-      _counter++;
+      this.routePoints = Future.value(routePoints);
     });
   }
 
   @override
   Widget build(BuildContext context) {
-    // This method is rerun every time setState is called, for instance as done
-    // by the _incrementCounter method above.
-    //
-    // The Flutter framework has been optimized to make rerunning build methods
-    // fast, so that you can just rebuild anything that needs updating rather
-    // than having to individually change instances of widgets.
     return Scaffold(
       appBar: AppBar(
-        // TRY THIS: Try changing the color here to a specific color (to
-        // Colors.amber, perhaps?) and trigger a hot reload to see the AppBar
-        // change color while the other colors stay the same.
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-        // Here we take the value from the MyHomePage object that was created by
-        // the App.build method, and use it to set our appbar title.
         title: Text(widget.title),
       ),
-      body: Center(
-        // Center is a layout widget. It takes a single child and positions it
-        // in the middle of the parent.
+      body: Expanded(
         child: Column(
-          // Column is also a layout widget. It takes a list of children and
-          // arranges them vertically. By default, it sizes itself to fit its
-          // children horizontally, and tries to be as tall as its parent.
-          //
-          // Column has various properties to control how it sizes itself and
-          // how it positions its children. Here we use mainAxisAlignment to
-          // center the children vertically; the main axis here is the vertical
-          // axis because Columns are vertical (the cross axis would be
-          // horizontal).
-          //
-          // TRY THIS: Invoke "debug painting" (choose the "Toggle Debug Paint"
-          // action in the IDE, or press "p" in the console), to see the
-          // wireframe for each widget.
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: <Widget>[
-            const Text(
-              'You have pushed the button this many times:',
+          children: [
+            TextFormField(
+              controller: startLatController,
             ),
-            Text(
-              '$_counter',
-              style: Theme.of(context).textTheme.headlineMedium,
+            TextFormField(
+              controller: startLngController,
+            ),
+            TextFormField(
+              controller: endLatController,
+            ),
+            TextFormField(
+              controller: endLngController,
+            ),
+            FutureBuilder(
+              future: routePoints,
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(
+                    child: CircularProgressIndicator(),
+                  );
+                }
+                if (snapshot.hasError) {
+                  return const Center(
+                    child: Text('Error'),
+                  );
+                }
+                if (snapshot.data!.isEmpty) {
+                  return const Center(
+                    child: Text('No Route Points Found'),
+                  );
+                }
+                return ListView.builder(
+                  itemCount: snapshot.data!.length,
+                  itemBuilder: (context, index) {
+                    return ListTile(
+                      title: Text(
+                          'Latitude: ${snapshot.data![index].latitude}, Longitude: ${snapshot.data![index].longitude}'),
+                    );
+                  },
+                );
+              },
             ),
           ],
         ),
       ),
       floatingActionButton: FloatingActionButton(
-        onPressed: _incrementCounter,
+        onPressed: () {
+          generateRoute(
+            startLatitude: startLatController.text,
+            startLongitude: startLngController.text,
+            endLatitude: endLatController.text,
+            endLongitude: endLngController.text,
+          );
+        },
         tooltip: 'Increment',
         child: const Icon(Icons.add),
-      ), // This trailing comma makes auto-formatting nicer for build methods.
+      ),
     );
   }
 }
