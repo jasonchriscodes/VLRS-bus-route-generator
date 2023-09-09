@@ -1,6 +1,3 @@
-import 'dart:convert';
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:open_route_service/open_route_service.dart';
@@ -34,7 +31,7 @@ class MyHomePage extends StatefulWidget {
 }
 
 class _MyHomePageState extends State<MyHomePage> {
-  Future<List<LatLng>> routePoints = Future.value([]);
+  Future<List<Map<String, double>>> routePoints = Future.value([]);
   final startLatController = TextEditingController();
   final startLngController = TextEditingController();
   final endLatController = TextEditingController();
@@ -81,13 +78,13 @@ class _MyHomePageState extends State<MyHomePage> {
     }
 
     print(data);
-    String jsonData = jsonEncode(data);
-    String filePath = '/path/ke/file.json';
-    File file = File(filePath);
-    file.writeAsString(jsonData);
+    // String jsonData = jsonEncode(data);
+    // String filePath = '/path/ke/file.json';
+    // File file = File(filePath);
+    // file.writeAsString(jsonData);
 
     setState(() {
-      this.routePoints = Future.value(routePoints);
+      this.routePoints = Future.value(data);
     });
   }
 
@@ -101,46 +98,48 @@ class _MyHomePageState extends State<MyHomePage> {
         children: [
           TextFormField(
             controller: startLatController,
+            decoration: const InputDecoration(
+              labelText: 'Start Latitude',
+            ),
           ),
           TextFormField(
             controller: startLngController,
+            decoration: const InputDecoration(
+              labelText: 'Start Longitude',
+            ),
           ),
           TextFormField(
             controller: endLatController,
+            decoration: const InputDecoration(
+              labelText: 'End Latitude',
+            ),
           ),
           TextFormField(
             controller: endLngController,
-          ),
-          Expanded(
-            child: FutureBuilder(
-              future: routePoints,
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(
-                    child: CircularProgressIndicator(),
-                  );
-                }
-                if (snapshot.hasError) {
-                  return const Center(
-                    child: Text('Error'),
-                  );
-                }
-                if (snapshot.data!.isEmpty) {
-                  return const Center(
-                    child: Text('No Route Points Found'),
-                  );
-                }
-                return ListView.builder(
-                  itemCount: snapshot.data!.length,
-                  itemBuilder: (context, index) {
-                    return ListTile(
-                      title: Text(
-                          'Latitude: ${snapshot.data![index].latitude}, Longitude: ${snapshot.data![index].longitude}'),
-                    );
-                  },
-                );
-              },
+            decoration: const InputDecoration(
+              labelText: 'End Longitude',
             ),
+          ),
+          FutureBuilder(
+            future: routePoints,
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Center(
+                  child: CircularProgressIndicator(),
+                );
+              }
+              if (snapshot.hasError) {
+                return const Center(
+                  child: Text('Error'),
+                );
+              }
+              if (snapshot.data!.isEmpty) {
+                return const Center(
+                  child: Text('No Route Points Found'),
+                );
+              }
+              return SelectableText(snapshot.data.toString());
+            },
           ),
         ],
       ),
