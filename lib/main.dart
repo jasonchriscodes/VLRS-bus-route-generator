@@ -16,7 +16,7 @@ class MyApp extends StatelessWidget {
       theme: ThemeData(
         primarySwatch: Colors.blue,
       ),
-      home: const MyHomePage(title: 'Flutter Demo Home Page'),
+      home: const MyHomePage(title: 'Bus Stop Generator'),
     );
   }
 }
@@ -31,20 +31,24 @@ class MyHomePage extends StatefulWidget {
 }
 
 class _MyHomePageState extends State<MyHomePage> {
-  Future<List<Map<String, double>>> routePoints = Future.value([]);
-  final startLatController = TextEditingController();
-  final startLngController = TextEditingController();
-  final endLatController = TextEditingController();
-  final endLngController = TextEditingController();
+  Future<Map<String, List<Map<String, double>>>> routePoints = Future.value({});
+  int index = 1;
+  final startLatController = TextEditingController(text: '-36.780258');
+  final startLngController = TextEditingController(text: '174.992506');
+  final endLatController = TextEditingController(text: '-36.781447');
+  final endLngController = TextEditingController(text: '175.006983');
+  final indexController = TextEditingController();
+  final formKey = GlobalKey<FormState>();
 
   @override
   void initState() {
     super.initState();
+    generateKeyRoutePoints();
     generateRoute(
-      startLatitude: '51.1324',
-      startLongitude: '13.4145',
-      endLatitude: '51.1324',
-      endLongitude: '13.4145',
+      startLatitude: startLatController.text,
+      startLongitude: startLngController.text,
+      endLatitude: endLatController.text,
+      endLongitude: endLngController.text,
     );
   }
 
@@ -72,20 +76,14 @@ class _MyHomePageState extends State<MyHomePage> {
         .map((coordinate) => LatLng(coordinate.latitude, coordinate.longitude))
         .toList();
 
+    var routePointsValue = await this.routePoints;
+    print(routePointsValue['"1"']);
     List<Map<String, double>> data = [];
     for (var element in routePoints) {
-      data.add({'latitude': element.latitude, 'longitude': element.longitude});
+      data.add(
+          {'"latitude"': element.latitude, '"longitude"': element.longitude});
     }
-
-    print(data);
-    // String jsonData = jsonEncode(data);
-    // String filePath = '/path/ke/file.json';
-    // File file = File(filePath);
-    // file.writeAsString(jsonData);
-
-    setState(() {
-      this.routePoints = Future.value(data);
-    });
+    routePointsValue['"$index"'] = data;
   }
 
   @override
@@ -94,67 +92,162 @@ class _MyHomePageState extends State<MyHomePage> {
       appBar: AppBar(
         title: Text(widget.title),
       ),
-      body: Column(
-        children: [
-          TextFormField(
-            controller: startLatController,
-            decoration: const InputDecoration(
-              labelText: 'Start Latitude',
+      body: Form(
+        key: formKey,
+        child: Container(
+          padding: const EdgeInsets.all(20),
+          child: SingleChildScrollView(
+            child: Column(
+              children: [
+                _buildTextForm(
+                  controller: startLatController,
+                  labelText: 'Start Latitude',
+                  validator: (value) {
+                    if (value == null || value.isEmpty) {
+                      return 'Please enter a valid latitude';
+                    }
+                    if (double.tryParse(value) == null) {
+                      return 'Please enter a valid latitude';
+                    }
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 10),
+                _buildTextForm(
+                  controller: startLngController,
+                  labelText: 'Start Longitude',
+                  validator: (value) {
+                    if (value == null || value.isEmpty) {
+                      return 'Please enter a valid longitude';
+                    }
+                    if (double.tryParse(value) == null) {
+                      return 'Please enter a valid longitude';
+                    }
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 10),
+                _buildTextForm(
+                  controller: endLatController,
+                  labelText: 'End Latitude',
+                  validator: (value) {
+                    if (value == null || value.isEmpty) {
+                      return 'Please enter a valid latitude';
+                    }
+                    if (double.tryParse(value) == null) {
+                      return 'Please enter a valid latitude';
+                    }
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 10),
+                _buildTextForm(
+                  controller: endLngController,
+                  labelText: 'End Longitude',
+                  validator: (value) {
+                    if (value == null || value.isEmpty) {
+                      return 'Please enter a valid longitude';
+                    }
+                    if (double.tryParse(value) == null) {
+                      return 'Please enter a valid longitude';
+                    }
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 10),
+                TextFormField(
+                  controller: indexController,
+                  decoration: const InputDecoration(
+                    labelText: "Bus Stop Number",
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.all(Radius.circular(20)),
+                    ),
+                  ),
+                  onChanged: (value) {
+                    setState(() {
+                      index = int.parse(value);
+                    });
+                    print(index.toString());
+                  },
+                ),
+                Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: FutureBuilder(
+                    future: routePoints,
+                    builder: (context, snapshot) {
+                      if (snapshot.connectionState == ConnectionState.waiting) {
+                        return const Center(
+                          child: CircularProgressIndicator(),
+                        );
+                      }
+                      if (snapshot.hasError) {
+                        return const Center(
+                          child: Text('Error'),
+                        );
+                      }
+                      if (snapshot.data!.isEmpty) {
+                        return const Center(
+                          child: Text('No Route Points Found'),
+                        );
+                      }
+                      return SelectableText(
+                        snapshot.data.toString(),
+                      );
+                    },
+                  ),
+                ),
+              ],
             ),
           ),
-          TextFormField(
-            controller: startLngController,
-            decoration: const InputDecoration(
-              labelText: 'Start Longitude',
-            ),
-          ),
-          TextFormField(
-            controller: endLatController,
-            decoration: const InputDecoration(
-              labelText: 'End Latitude',
-            ),
-          ),
-          TextFormField(
-            controller: endLngController,
-            decoration: const InputDecoration(
-              labelText: 'End Longitude',
-            ),
-          ),
-          FutureBuilder(
-            future: routePoints,
-            builder: (context, snapshot) {
-              if (snapshot.connectionState == ConnectionState.waiting) {
-                return const Center(
-                  child: CircularProgressIndicator(),
-                );
-              }
-              if (snapshot.hasError) {
-                return const Center(
-                  child: Text('Error'),
-                );
-              }
-              if (snapshot.data!.isEmpty) {
-                return const Center(
-                  child: Text('No Route Points Found'),
-                );
-              }
-              return SelectableText(snapshot.data.toString());
-            },
-          ),
-        ],
+        ),
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: () {
-          generateRoute(
-            startLatitude: startLatController.text,
-            startLongitude: startLngController.text,
-            endLatitude: endLatController.text,
-            endLongitude: endLngController.text,
-          );
+          if (formKey.currentState!.validate()) {
+            generateRoute(
+              startLatitude: startLatController.text,
+              startLongitude: startLngController.text,
+              endLatitude: endLatController.text,
+              endLongitude: endLngController.text,
+            ).then((value) {
+              // startLatController.clear();
+              // startLngController.clear();
+              // endLatController.clear();
+              // endLngController.clear();
+              setState(() {
+                index++;
+              });
+            });
+          }
         },
         tooltip: 'Increment',
         child: const Icon(Icons.add),
       ),
     );
+  }
+
+  TextFormField _buildTextForm({
+    TextEditingController? controller,
+    String? labelText,
+    String? Function(String?)? validator,
+  }) {
+    return TextFormField(
+      controller: controller,
+      decoration: InputDecoration(
+        labelText: labelText,
+        border: const OutlineInputBorder(
+          borderRadius: BorderRadius.all(Radius.circular(20)),
+        ),
+      ),
+      validator: validator,
+    );
+  }
+
+  void generateKeyRoutePoints() async {
+    Map<String, List<Map<String, double>>>? routePointsValue =
+        await routePoints;
+    for (var i = 1; i < 19; i++) {
+      routePointsValue['"$i"'] = [];
+    }
   }
 }
