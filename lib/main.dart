@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:open_route_service/open_route_service.dart';
+import 'dart:convert';
 
 void main() {
   runApp(const MyApp());
@@ -31,13 +32,11 @@ class MyHomePage extends StatefulWidget {
 }
 
 class _MyHomePageState extends State<MyHomePage> {
-  Map<String, List<Map<String, double>>> routePoints = {};
-  int index = 1;
+  Map<String, List<Map<String, double>>> routePoints = {"1": []};
   final startLatController = TextEditingController(text: '-36.780258');
   final startLngController = TextEditingController(text: '174.992506');
   final endLatController = TextEditingController(text: '-36.781447');
   final endLngController = TextEditingController(text: '175.006983');
-  final indexController = TextEditingController();
   final formKey = GlobalKey<FormState>();
 
   @override
@@ -79,12 +78,20 @@ class _MyHomePageState extends State<MyHomePage> {
     data.add({'latitude': endLat, 'longitude': endLng}); // Add end point
 
     setState(() {
-      if (routePoints['$index'] == null) {
-        routePoints['$index'] = data;
-      } else {
-        routePoints['$index']!.addAll(data);
+      // Remove duplicate end-start point if it exists
+      if (routePoints["1"]!.isNotEmpty &&
+          routePoints["1"]!.last['latitude'] == startLat &&
+          routePoints["1"]!.last['longitude'] == startLng) {
+        routePoints["1"]!.removeLast();
       }
-      index++;
+
+      routePoints["1"]!.addAll(data);
+
+      // Update the controllers for next input
+      startLatController.text = endLatController.text;
+      startLngController.text = endLngController.text;
+      endLatController.clear();
+      endLngController.clear();
     });
   }
 
@@ -158,28 +165,11 @@ class _MyHomePageState extends State<MyHomePage> {
                 ),
                 Padding(
                   padding: const EdgeInsets.all(20),
-                  child: FutureBuilder(
-                    future: Future.value(routePoints),
-                    builder: (context, snapshot) {
-                      if (snapshot.connectionState == ConnectionState.waiting) {
-                        return const Center(
-                          child: CircularProgressIndicator(),
-                        );
-                      }
-                      if (snapshot.hasError) {
-                        return const Center(
-                          child: Text('Error'),
-                        );
-                      }
-                      if (snapshot.data!.isEmpty) {
-                        return const Center(
-                          child: Text('No Route Points Found'),
-                        );
-                      }
-                      return SelectableText(
-                        snapshot.data.toString(),
-                      );
-                    },
+                  child: SelectableText(
+                    jsonEncode(routePoints).replaceAllMapped(
+                      RegExp(r'\"(\d+)\"'),
+                      (match) => '"${match[1]}"',
+                    ),
                   ),
                 ),
               ],
