@@ -31,7 +31,7 @@ class MyHomePage extends StatefulWidget {
 }
 
 class _MyHomePageState extends State<MyHomePage> {
-  Future<Map<String, List<Map<String, double>>>> routePoints = Future.value({});
+  Map<String, List<Map<String, double>>> routePoints = {};
   int index = 1;
   final startLatController = TextEditingController(text: '-36.780258');
   final startLngController = TextEditingController(text: '174.992506');
@@ -43,13 +43,6 @@ class _MyHomePageState extends State<MyHomePage> {
   @override
   void initState() {
     super.initState();
-    generateKeyRoutePoints();
-    generateRoute(
-      startLatitude: startLatController.text,
-      startLongitude: startLngController.text,
-      endLatitude: endLatController.text,
-      endLongitude: endLngController.text,
-    );
   }
 
   Future<void> generateRoute({
@@ -72,18 +65,27 @@ class _MyHomePageState extends State<MyHomePage> {
       endCoordinate: ORSCoordinate(latitude: endLat, longitude: endLng),
     );
 
-    final List<LatLng> routePoints = routeCoordinates
+    final List<LatLng> routePointsList = routeCoordinates
         .map((coordinate) => LatLng(coordinate.latitude, coordinate.longitude))
         .toList();
 
-    var routePointsValue = await this.routePoints;
-    print(routePointsValue['"1"']);
     List<Map<String, double>> data = [];
-    for (var element in routePoints) {
-      data.add(
-          {'"latitude"': element.latitude, '"longitude"': element.longitude});
+    data.add({'latitude': startLat, 'longitude': startLng}); // Add start point
+
+    for (var element in routePointsList) {
+      data.add({'latitude': element.latitude, 'longitude': element.longitude});
     }
-    routePointsValue['"$index"'] = data;
+
+    data.add({'latitude': endLat, 'longitude': endLng}); // Add end point
+
+    setState(() {
+      if (routePoints['$index'] == null) {
+        routePoints['$index'] = data;
+      } else {
+        routePoints['$index']!.addAll(data);
+      }
+      index++;
+    });
   }
 
   @override
@@ -157,7 +159,7 @@ class _MyHomePageState extends State<MyHomePage> {
                 Padding(
                   padding: const EdgeInsets.all(20),
                   child: FutureBuilder(
-                    future: routePoints,
+                    future: Future.value(routePoints),
                     builder: (context, snapshot) {
                       if (snapshot.connectionState == ConnectionState.waiting) {
                         return const Center(
@@ -193,15 +195,7 @@ class _MyHomePageState extends State<MyHomePage> {
               startLongitude: startLngController.text,
               endLatitude: endLatController.text,
               endLongitude: endLngController.text,
-            ).then((value) {
-              // startLatController.clear();
-              // startLngController.clear();
-              // endLatController.clear();
-              // endLngController.clear();
-              setState(() {
-                index++;
-              });
-            });
+            );
           }
         },
         tooltip: 'Increment',
@@ -225,13 +219,5 @@ class _MyHomePageState extends State<MyHomePage> {
       ),
       validator: validator,
     );
-  }
-
-  void generateKeyRoutePoints() async {
-    Map<String, List<Map<String, double>>>? routePointsValue =
-        await routePoints;
-    for (var i = 1; i < 19; i++) {
-      routePointsValue['"$i"'] = [];
-    }
   }
 }
