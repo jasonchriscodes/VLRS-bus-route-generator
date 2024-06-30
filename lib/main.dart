@@ -154,22 +154,6 @@ class _MyHomePageState extends State<MyHomePage> {
                     return null;
                   },
                 ),
-                const SizedBox(height: 10),
-                TextFormField(
-                  controller: indexController,
-                  decoration: const InputDecoration(
-                    labelText: "Bus Stop Number",
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.all(Radius.circular(20)),
-                    ),
-                  ),
-                  onChanged: (value) {
-                    setState(() {
-                      index = int.parse(value);
-                    });
-                    print(index.toString());
-                  },
-                ),
                 Padding(
                   padding: const EdgeInsets.all(20),
                   child: FutureBuilder(
