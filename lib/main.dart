@@ -32,7 +32,7 @@ class MyHomePage extends StatefulWidget {
 }
 
 class _MyHomePageState extends State<MyHomePage> {
-  Map<String, List<Map<String, double>>> routePoints = {"1": []};
+  List<Map<String, double>> routePoints = [];
   final startLatController = TextEditingController(text: '-36.780258');
   final startLngController = TextEditingController(text: '174.992506');
   final endLatController = TextEditingController(text: '-36.781447');
@@ -79,13 +79,13 @@ class _MyHomePageState extends State<MyHomePage> {
 
     setState(() {
       // Remove duplicate end-start point if it exists
-      if (routePoints["1"]!.isNotEmpty &&
-          routePoints["1"]!.last['latitude'] == startLat &&
-          routePoints["1"]!.last['longitude'] == startLng) {
-        routePoints["1"]!.removeLast();
+      if (routePoints.isNotEmpty &&
+          routePoints.last['latitude'] == startLat &&
+          routePoints.last['longitude'] == startLng) {
+        routePoints.removeLast();
       }
 
-      routePoints["1"]!.addAll(data);
+      routePoints.addAll(data);
 
       // Update the controllers for next input
       startLatController.text = endLatController.text;
@@ -166,10 +166,7 @@ class _MyHomePageState extends State<MyHomePage> {
                 Padding(
                   padding: const EdgeInsets.all(20),
                   child: SelectableText(
-                    jsonEncode(routePoints).replaceAllMapped(
-                      RegExp(r'\"(\d+)\"'),
-                      (match) => '"${match[1]}"',
-                    ),
+                    jsonEncode(routePoints),
                   ),
                 ),
               ],
