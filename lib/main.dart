@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:open_route_service/open_route_service.dart';
 import 'dart:convert';
+import 'package:flutter/services.dart'; // Import this package for clipboard functionality
 
 void main() {
   runApp(const MyApp());
@@ -37,6 +38,7 @@ class _MyHomePageState extends State<MyHomePage> {
   final startLngController = TextEditingController(text: '174.992506');
   final endLatController = TextEditingController(text: '-36.781447');
   final endLngController = TextEditingController(text: '175.006983');
+
   final formKey = GlobalKey<FormState>();
 
   @override
@@ -169,6 +171,17 @@ class _MyHomePageState extends State<MyHomePage> {
                     jsonEncode(routePoints),
                   ),
                 ),
+                ElevatedButton(
+                  onPressed: () {
+                    Clipboard.setData(
+                        ClipboardData(text: jsonEncode(routePoints)));
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                          content: Text('Output copied to clipboard!')),
+                    );
+                  },
+                  child: const Text('Copy Output'),
+                ),
               ],
             ),
           ),
@@ -185,7 +198,7 @@ class _MyHomePageState extends State<MyHomePage> {
             );
           }
         },
-        tooltip: 'Increment',
+        tooltip: 'Generate Route',
         child: const Icon(Icons.add),
       ),
     );
