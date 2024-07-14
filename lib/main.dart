@@ -33,11 +33,12 @@ class MyHomePage extends StatefulWidget {
 }
 
 class _MyHomePageState extends State<MyHomePage> {
-  List<Map<String, double>> routePoints = [];
+  List<Map<String, dynamic>> routeData = [];
   final startLatController = TextEditingController(text: '-36.780258');
   final startLngController = TextEditingController(text: '174.992506');
   final endLatController = TextEditingController(text: '-36.781447');
   final endLngController = TextEditingController(text: '175.006983');
+  final descriptionController = TextEditingController();
 
   final formKey = GlobalKey<FormState>();
 
@@ -51,6 +52,7 @@ class _MyHomePageState extends State<MyHomePage> {
     required String startLongitude,
     required String endLatitude,
     required String endLongitude,
+    required String description,
   }) async {
     // Initialize the openrouteservice with your API key.
     final OpenRouteService client = OpenRouteService(
@@ -80,20 +82,17 @@ class _MyHomePageState extends State<MyHomePage> {
     data.add({'latitude': endLat, 'longitude': endLng}); // Add end point
 
     setState(() {
-      // Remove duplicate end-start point if it exists
-      if (routePoints.isNotEmpty &&
-          routePoints.last['latitude'] == startLat &&
-          routePoints.last['longitude'] == startLng) {
-        routePoints.removeLast();
-      }
-
-      routePoints.addAll(data);
+      routeData.add({
+        'description': description,
+        'routePoints': data,
+      });
 
       // Update the controllers for next input
       startLatController.text = endLatController.text;
       startLngController.text = endLngController.text;
       endLatController.clear();
       endLngController.clear();
+      descriptionController.clear();
     });
   }
 
@@ -165,16 +164,27 @@ class _MyHomePageState extends State<MyHomePage> {
                     return null;
                   },
                 ),
+                const SizedBox(height: 10),
+                _buildTextForm(
+                  controller: descriptionController,
+                  labelText: 'Description',
+                  validator: (value) {
+                    if (value == null || value.isEmpty) {
+                      return 'Please enter a description';
+                    }
+                    return null;
+                  },
+                ),
                 Padding(
                   padding: const EdgeInsets.all(20),
                   child: SelectableText(
-                    jsonEncode(routePoints),
+                    jsonEncode(routeData),
                   ),
                 ),
                 ElevatedButton(
                   onPressed: () {
                     Clipboard.setData(
-                        ClipboardData(text: jsonEncode(routePoints)));
+                        ClipboardData(text: jsonEncode(routeData)));
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(
                           content: Text('Output copied to clipboard!')),
@@ -195,6 +205,7 @@ class _MyHomePageState extends State<MyHomePage> {
               startLongitude: startLngController.text,
               endLatitude: endLatController.text,
               endLongitude: endLngController.text,
+              description: descriptionController.text,
             );
           }
         },
