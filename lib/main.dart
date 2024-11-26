@@ -63,10 +63,13 @@ class _MyHomePageState extends State<MyHomePage> {
                         width: 40,
                         height: 40,
                         point: _startingCoordinates!,
-                        child: Image.asset(
-                          'assets/location-pin.png',
-                          width: 40,
-                          height: 40,
+                        child: Transform.translate(
+                          offset: const Offset(0, -20), // Move anchor to bottom
+                          child: Image.asset(
+                            'assets/location-pin.png',
+                            width: 40,
+                            height: 40,
+                          ),
                         ),
                       ),
                     ],
