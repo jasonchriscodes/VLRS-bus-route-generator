@@ -36,7 +36,7 @@ dependencies:
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.2
   open_route_service: ^1.2.3
-  flutter_map: 6.1.0
+  flutter_map: ^6.1.0
   latlong2: ^0.9.0
 
 dev_dependencies:
@@ -60,6 +60,8 @@ flutter:
   # included with your application, so that you can use the icons in
   # the material Icons class.
   uses-material-design: true
+  assets:
+  - assets/location-pin.png
 
   # To add assets to your application, add an assets section, like this:
   # assets:
@@ -91,3 +93,5 @@ flutter:
   #
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/custom-fonts/#from-packages
+
+

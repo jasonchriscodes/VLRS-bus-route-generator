@@ -7,7 +7,7 @@ void main() {
 }
 
 class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+  const MyApp({Key? key}) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
@@ -29,37 +29,72 @@ class MyHomePage extends StatefulWidget {
 class _MyHomePageState extends State<MyHomePage> {
   final MapController _mapController = MapController();
   LatLng _currentLocation = LatLng(-36.8485, 174.7633); // Auckland, New Zealand
+  LatLng? _startingCoordinates;
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('Map Viewer')),
-      body: FlutterMap(
-        mapController: _mapController,
-        options: MapOptions(
-          center: _currentLocation,
-          zoom: 14,
-          maxZoom: 18,
-          minZoom: 5,
-        ),
+      body: Column(
         children: [
-          TileLayer(
-            urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-            userAgentPackageName: 'com.example.app',
+          Expanded(
+            child: FlutterMap(
+              mapController: _mapController,
+              options: MapOptions(
+                center: _currentLocation,
+                zoom: 14,
+                maxZoom: 18,
+                minZoom: 5,
+                onTap: (tapPosition, point) {
+                  setState(() {
+                    _startingCoordinates = point;
+                  });
+                },
+              ),
+              children: [
+                TileLayer(
+                  urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                  userAgentPackageName: 'com.example.app',
+                ),
+                if (_startingCoordinates != null)
+                  MarkerLayer(
+                    markers: [
+                      Marker(
+                        width: 40,
+                        height: 40,
+                        point: _startingCoordinates!,
+                        child: Image.asset(
+                          'assets/location-pin.png',
+                          width: 40,
+                          height: 40,
+                        ),
+                      ),
+                    ],
+                  ),
+              ],
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.all(10),
+            color: Colors.white,
+            child: Column(
+              children: [
+                if (_startingCoordinates != null)
+                  Text(
+                    'Starting Coordinate:\nLatitude: ${_startingCoordinates!.latitude}, Longitude: ${_startingCoordinates!.longitude}',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(fontSize: 16),
+                  )
+                else
+                  const Text(
+                    'Tap on the map to select a location.',
+                    style: TextStyle(fontSize: 16),
+                  ),
+              ],
+            ),
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _resetToDefaultLocation,
-        child: const Icon(Icons.my_location),
-      ),
     );
-  }
-
-  void _resetToDefaultLocation() {
-    setState(() {
-      _currentLocation = LatLng(-36.8485, 174.7633); // Reset to Auckland
-      _mapController.move(_currentLocation, 14);
-    });
   }
 }
