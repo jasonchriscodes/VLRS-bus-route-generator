@@ -34,7 +34,9 @@ class _MyHomePageState extends State<MyHomePage> {
   LatLng? _selectedLocation;
   LatLng? _startingLocation;
   String? _currentStreet;
+  String? _startingStreet;
   bool _isStartingPointChosen = false;
+  List<Map<String, dynamic>> _nextPoints = []; // Store next points and details
 
   List<Map<String, dynamic>> _suggestions =
       []; // Store suggestions with coordinates
@@ -116,11 +118,21 @@ class _MyHomePageState extends State<MyHomePage> {
     _mapController.move(_selectedLocation!, 16); // Zoom level 16
   }
 
-  void _chooseStartingPoint() {
+  void _choosePoint() {
     if (_selectedLocation != null) {
       setState(() {
-        _startingLocation = _selectedLocation;
-        _isStartingPointChosen = true;
+        if (!_isStartingPointChosen) {
+          // Set starting point
+          _startingLocation = _selectedLocation;
+          _startingStreet = _currentStreet;
+          _isStartingPointChosen = true;
+        } else {
+          // Add next point
+          _nextPoints.add({
+            'location': _selectedLocation!,
+            'street': _currentStreet ?? 'Unknown Street',
+          });
+        }
       });
     }
   }
@@ -159,8 +171,10 @@ class _MyHomePageState extends State<MyHomePage> {
             ),
           ),
           ElevatedButton(
-            onPressed: _chooseStartingPoint,
-            child: const Text('Choose Starting Point'),
+            onPressed: _choosePoint,
+            child: Text(_isStartingPointChosen
+                ? 'Choose Next Point'
+                : 'Choose Starting Point'),
           ),
           Expanded(
             child: FlutterMap(
@@ -211,23 +225,31 @@ class _MyHomePageState extends State<MyHomePage> {
               children: [
                 if (_isStartingPointChosen && _startingLocation != null) ...[
                   Text(
-                    'Starting Point is chosen: $_startingLocation at $_currentStreet',
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(fontSize: 16),
-                  ),
-                ] else if (_selectedLocation != null) ...[
-                  Text(
-                    'Latitude: ${_selectedLocation!.latitude}, Longitude: ${_selectedLocation!.longitude}',
+                    'Starting Point is chosen: $_startingLocation at $_startingStreet',
                     textAlign: TextAlign.center,
                     style: const TextStyle(fontSize: 16),
                   ),
                   const SizedBox(height: 8),
+                ],
+                ..._nextPoints.map((point) => Text(
+                      'Next Point is chosen: ${point['location']} at ${point['street']}',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(fontSize: 16),
+                    )),
+                if (_selectedLocation != null &&
+                    !_nextPoints.any(
+                        (point) => point['location'] == _selectedLocation)) ...[
                   Text(
-                    'Current Street: ${_currentStreet ?? "Fetching..."}',
+                    'Next Point: Latitude: ${_selectedLocation!.latitude}, Longitude: ${_selectedLocation!.longitude}',
                     textAlign: TextAlign.center,
                     style: const TextStyle(fontSize: 16),
                   ),
-                ] else
+                  Text(
+                    'Next Street: ${_currentStreet ?? "Fetching..."}',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(fontSize: 16),
+                  ),
+                ] else if (_selectedLocation == null)
                   const Text(
                     'Tap on the map to select a location.',
                     style: TextStyle(fontSize: 16),
