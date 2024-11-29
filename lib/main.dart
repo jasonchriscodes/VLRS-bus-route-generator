@@ -150,37 +150,44 @@ class _MyHomePageState extends State<MyHomePage> {
         children: [
           Padding(
             padding: const EdgeInsets.all(10),
-            child: Column(
+            child: Row(
               children: [
-                TextField(
-                  controller: _searchController,
-                  decoration: const InputDecoration(
-                    labelText: 'Search for a location',
-                    border: OutlineInputBorder(),
+                Flexible(
+                  child: TextField(
+                    controller: _searchController,
+                    decoration: const InputDecoration(
+                      labelText: 'Search for a location',
+                      border: OutlineInputBorder(),
+                    ),
+                    onChanged: (value) => _fetchSuggestions(value),
                   ),
-                  onChanged: (value) => _fetchSuggestions(value),
                 ),
-                if (_suggestions.isNotEmpty)
-                  ListView.builder(
-                    shrinkWrap: true,
-                    itemCount: _suggestions.length,
-                    itemBuilder: (context, index) {
-                      final suggestion = _suggestions[index];
-                      return ListTile(
-                        title: Text(suggestion['label']),
-                        onTap: () => _selectSuggestion(suggestion),
-                      );
-                    },
-                  ),
+                const SizedBox(
+                    width: 10), // Spacing between search bar and button
+                ElevatedButton(
+                  onPressed: _choosePoint,
+                  child: Text(_isStartingPointChosen
+                      ? 'Choose Next Point'
+                      : 'Choose Starting Point'),
+                ),
               ],
             ),
           ),
-          ElevatedButton(
-            onPressed: _choosePoint,
-            child: Text(_isStartingPointChosen
-                ? 'Choose Next Point'
-                : 'Choose Starting Point'),
-          ),
+          if (_suggestions.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 10),
+              child: ListView.builder(
+                shrinkWrap: true,
+                itemCount: _suggestions.length,
+                itemBuilder: (context, index) {
+                  final suggestion = _suggestions[index];
+                  return ListTile(
+                    title: Text(suggestion['label']),
+                    onTap: () => _selectSuggestion(suggestion),
+                  );
+                },
+              ),
+            ),
           Expanded(
             child: FlutterMap(
               mapController: _mapController,
