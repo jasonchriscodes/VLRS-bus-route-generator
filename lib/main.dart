@@ -30,6 +30,7 @@ class MyHomePage extends StatefulWidget {
 
 class _MyHomePageState extends State<MyHomePage> {
   final MapController _mapController = MapController();
+  final ScrollController _scrollController = ScrollController();
   LatLng _currentLocation = LatLng(-36.8485, 174.7633); // Auckland, New Zealand
   LatLng? _selectedLocation;
   LatLng? _startingLocation;
@@ -139,6 +140,10 @@ class _MyHomePageState extends State<MyHomePage> {
 
   @override
   Widget build(BuildContext context) {
+    // Adjust the height of the scrollable section
+    final double sectionHeight =
+        MediaQuery.of(context).size.height * 0.1; // Reduce height to half
+
     return Scaffold(
       appBar: AppBar(title: const Text('Map Viewer')),
       body: Column(
@@ -219,44 +224,52 @@ class _MyHomePageState extends State<MyHomePage> {
             ),
           ),
           Container(
-            padding: const EdgeInsets.all(10),
-            color: Colors.white,
-            child: Column(
-              children: [
-                if (_isStartingPointChosen && _startingLocation != null) ...[
-                  Text(
-                    'Starting Point is chosen: $_startingLocation at $_startingStreet',
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(fontSize: 16),
-                  ),
-                  const SizedBox(height: 8),
-                ],
-                ..._nextPoints.map((point) => Text(
-                      'Next Point is chosen: ${point['location']} at ${point['street']}',
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(fontSize: 16),
-                    )),
-                if (_selectedLocation != null &&
-                    !_nextPoints.any(
-                        (point) => point['location'] == _selectedLocation)) ...[
-                  Text(
-                    'Next Point: Latitude: ${_selectedLocation!.latitude}, Longitude: ${_selectedLocation!.longitude}',
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(fontSize: 16),
-                  ),
-                  Text(
-                    'Next Street: ${_currentStreet ?? "Fetching..."}',
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(fontSize: 16),
-                  ),
-                ] else if (_selectedLocation == null)
-                  const Text(
-                    'Tap on the map to select a location.',
-                    style: TextStyle(fontSize: 16),
-                  ),
-              ],
+            height: sectionHeight, // Adjust the height
+            color: Colors.white, // Set background color to white
+            child: Scrollbar(
+              thumbVisibility:
+                  true, // Ensure the scrollbar thumb is always visible
+              scrollbarOrientation: ScrollbarOrientation.right,
+              child: SingleChildScrollView(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (_isStartingPointChosen &&
+                        _startingLocation != null) ...[
+                      Text(
+                        'Starting Point is chosen: $_startingLocation at $_startingStreet',
+                        textAlign: TextAlign.left,
+                        style: const TextStyle(fontSize: 14),
+                      ),
+                    ],
+                    ..._nextPoints.map((point) => Text(
+                          'Next Point is chosen: ${point['location']} at ${point['street']}',
+                          textAlign: TextAlign.left,
+                          style: const TextStyle(fontSize: 14),
+                        )),
+                    if (_selectedLocation != null &&
+                        !_nextPoints.any((point) =>
+                            point['location'] == _selectedLocation)) ...[
+                      Text(
+                        'Next Point: Latitude: ${_selectedLocation!.latitude}, Longitude: ${_selectedLocation!.longitude}',
+                        textAlign: TextAlign.left,
+                        style: const TextStyle(fontSize: 14),
+                      ),
+                      Text(
+                        'Next Street: ${_currentStreet ?? "Fetching..."}',
+                        textAlign: TextAlign.left,
+                        style: const TextStyle(fontSize: 14),
+                      ),
+                    ] else if (_selectedLocation == null)
+                      const Text(
+                        'Tap on the map to select a location.',
+                        style: TextStyle(fontSize: 14),
+                      ),
+                  ],
+                ),
+              ),
             ),
-          ),
+          )
         ],
       ),
     );
