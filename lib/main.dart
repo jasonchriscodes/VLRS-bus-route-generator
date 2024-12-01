@@ -38,9 +38,8 @@ class _MyHomePageState extends State<MyHomePage> {
   String? _startingStreet;
   bool _isStartingPointChosen = false;
   List<Map<String, dynamic>> _nextPoints = []; // Store next points and details
-
-  List<Map<String, dynamic>> _suggestions =
-      []; // Store suggestions with coordinates
+  List<List<List<double>>> _routes = []; // Store route coordinates
+  List<Map<String, dynamic>> _suggestions = [];
   final TextEditingController _searchController = TextEditingController();
 
   Future<void> _fetchStreetName(LatLng point) async {
@@ -70,6 +69,50 @@ class _MyHomePageState extends State<MyHomePage> {
     }
   }
 
+  Future<List<List<double>>> _fetchRouteCoordinates(
+      LatLng start, LatLng end) async {
+    final String url =
+        'http://43.226.218.99:8080/ors/v2/directions/driving-car?start=${start.longitude},${start.latitude}&end=${end.longitude},${end.latitude}&format=geojson';
+
+    try {
+      final response = await http.get(Uri.parse(url));
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final coordinates =
+            (data['features'][0]['geometry']['coordinates'] as List)
+                .map<List<double>>(
+                    (coord) => [coord[0] as double, coord[1] as double])
+                .toList();
+        return coordinates;
+      } else {
+        print('Error fetching route: ${response.statusCode}');
+        return [];
+      }
+    } catch (e) {
+      print('Error fetching route: $e');
+      return [];
+    }
+  }
+
+  Future<void> _addRouteCoordinates() async {
+    if (_isStartingPointChosen && _startingLocation != null) {
+      _routes.clear(); // Clear previous routes to avoid duplication
+
+      for (int i = 0; i < _nextPoints.length; i++) {
+        LatLng start = i == 0
+            ? _startingLocation!
+            : _nextPoints[i - 1]['location'] as LatLng;
+        LatLng end = _nextPoints[i]['location'] as LatLng;
+
+        final coordinates = await _fetchRouteCoordinates(start, end);
+        setState(() {
+          _routes.add(coordinates);
+        });
+      }
+    }
+  }
+
   Future<void> _fetchSuggestions(String query) async {
     if (query.isEmpty) {
       setState(() {
@@ -96,11 +139,16 @@ class _MyHomePageState extends State<MyHomePage> {
                   })
               .toList();
         });
+      } else {
+        setState(() {
+          _suggestions = [];
+        });
       }
     } catch (e) {
       setState(() {
         _suggestions = [];
       });
+      print('Error fetching suggestions: $e');
     }
   }
 
@@ -115,7 +163,7 @@ class _MyHomePageState extends State<MyHomePage> {
       _suggestions = [];
     });
 
-    // Move map to the selected location and zoom in
+    // Move the map to the selected location and zoom in
     _mapController.move(_selectedLocation!, 16); // Zoom level 16
   }
 
@@ -140,9 +188,8 @@ class _MyHomePageState extends State<MyHomePage> {
 
   @override
   Widget build(BuildContext context) {
-    // Adjust the height of the scrollable section
     final double sectionHeight =
-        MediaQuery.of(context).size.height * 0.1; // Reduce height to half
+        MediaQuery.of(context).size.height * 0.1; // Adjust section height
 
     return Scaffold(
       appBar: AppBar(title: const Text('Map Viewer')),
@@ -162,10 +209,12 @@ class _MyHomePageState extends State<MyHomePage> {
                     onChanged: (value) => _fetchSuggestions(value),
                   ),
                 ),
-                const SizedBox(
-                    width: 10), // Spacing between search bar and button
+                const SizedBox(width: 10),
                 ElevatedButton(
-                  onPressed: _choosePoint,
+                  onPressed: () {
+                    _choosePoint();
+                    _addRouteCoordinates();
+                  },
                   child: Text(_isStartingPointChosen
                       ? 'Choose Next Point'
                       : 'Choose Starting Point'),
@@ -194,8 +243,6 @@ class _MyHomePageState extends State<MyHomePage> {
               options: MapOptions(
                 center: _currentLocation,
                 zoom: 14,
-                maxZoom: 18,
-                minZoom: 5,
                 onTap: (tapPosition, point) {
                   setState(() {
                     _selectedLocation = point;
@@ -231,13 +278,13 @@ class _MyHomePageState extends State<MyHomePage> {
             ),
           ),
           Container(
-            height: sectionHeight, // Adjust the height
-            color: Colors.white, // Set background color to white
+            height: sectionHeight,
+            color: Colors.white,
             child: Scrollbar(
-              thumbVisibility:
-                  true, // Ensure the scrollbar thumb is always visible
-              scrollbarOrientation: ScrollbarOrientation.right,
+              thumbVisibility: true,
+              controller: _scrollController,
               child: SingleChildScrollView(
+                controller: _scrollController,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -249,11 +296,28 @@ class _MyHomePageState extends State<MyHomePage> {
                         style: const TextStyle(fontSize: 14),
                       ),
                     ],
-                    ..._nextPoints.map((point) => Text(
-                          'Next Point is chosen: ${point['location']} at ${point['street']}',
-                          textAlign: TextAlign.left,
-                          style: const TextStyle(fontSize: 14),
-                        )),
+                    ..._nextPoints.asMap().entries.map((entry) {
+                      int index = entry.key;
+                      Map<String, dynamic> point = entry.value;
+                      final routeCoordinates =
+                          index < _routes.length ? _routes[index] : [];
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Next Point is chosen: ${point['location']} at ${point['street']}',
+                            textAlign: TextAlign.left,
+                            style: const TextStyle(fontSize: 14),
+                          ),
+                          if (routeCoordinates.isNotEmpty)
+                            Text(
+                              'Route Coordinates: ${routeCoordinates.map((c) => "[${c[0]}, ${c[1]}]").join(", ")}',
+                              textAlign: TextAlign.left,
+                              style: const TextStyle(fontSize: 12),
+                            ),
+                        ],
+                      );
+                    }).toList(),
                     if (_selectedLocation != null &&
                         !_nextPoints.any((point) =>
                             point['location'] == _selectedLocation)) ...[
@@ -276,7 +340,7 @@ class _MyHomePageState extends State<MyHomePage> {
                 ),
               ),
             ),
-          )
+          ),
         ],
       ),
     );
