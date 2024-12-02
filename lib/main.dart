@@ -6,6 +6,9 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:file_picker/file_picker.dart';
+
+String _importedContent = '';
 
 void main() {
   runApp(const MyApp());
@@ -146,11 +149,6 @@ class _MyHomePageState extends State<MyHomePage> {
       print("Storage permission granted.");
     } else if (status.isDenied || status.isPermanentlyDenied) {
       print("Storage permission denied.");
-      // Inform the user and optionally navigate to app settings
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-            content: Text('Storage permission is required to save the file.')),
-      );
     }
   }
 
@@ -354,6 +352,92 @@ class _MyHomePageState extends State<MyHomePage> {
     }
   }
 
+  Future<void> _importFile() async {
+    try {
+      // Open the file picker
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['txt'], // Allow only .txt files
+      );
+
+      if (result != null && result.files.single.path != null) {
+        final file = File(result.files.single.path!);
+
+        // Read file content
+        final content = await file.readAsString();
+
+        // Parse content to update state
+        _parseImportedContent(content);
+
+        // Display the content in the container
+        setState(() {
+          _importedContent = content;
+        });
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('File imported successfully')),
+        );
+      } else {
+        // User canceled file selection
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No file selected')),
+        );
+      }
+    } catch (e) {
+      print('Error importing file: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Error importing file')),
+      );
+    }
+  }
+
+  void _parseImportedContent(String content) {
+    final lines = content.split('\n');
+    _startingLocation = null;
+    _nextPoints.clear();
+    _routes.clear();
+
+    for (final line in lines) {
+      if (line.startsWith('Starting Point:')) {
+        // Extract starting point and street
+        final regex =
+            RegExp(r'LatLng\(latitude:(.*?), longitude:(.*?)\) \((.*?)\)');
+        final match = regex.firstMatch(line);
+        if (match != null) {
+          final lat = double.parse(match.group(1)!);
+          final lon = double.parse(match.group(2)!);
+          final street = match.group(3);
+          _startingLocation = LatLng(lat, lon);
+          _startingStreet = street;
+          _isStartingPointChosen = true;
+        }
+      } else if (line.startsWith('Next Point:')) {
+        // Extract next point and street
+        final regex =
+            RegExp(r'LatLng\(latitude:(.*?), longitude:(.*?)\) \((.*?)\)');
+        final match = regex.firstMatch(line);
+        if (match != null) {
+          final lat = double.parse(match.group(1)!);
+          final lon = double.parse(match.group(2)!);
+          final street = match.group(3);
+          _nextPoints.add({
+            'location': LatLng(lat, lon),
+            'street': street,
+          });
+        }
+      } else if (line.contains('Route:')) {
+        // Extract route coordinates
+        final regex = RegExp(r'\[(.*?)\]');
+        final matches = regex.allMatches(line);
+        final route = matches.map((match) {
+          final coords = match.group(1)!.split(', ').map(double.parse).toList();
+          return coords;
+        }).toList();
+        _routes.add(route);
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final double sectionHeight =
@@ -414,7 +498,7 @@ class _MyHomePageState extends State<MyHomePage> {
                 onTap: (tapPosition, point) {
                   setState(() {
                     _selectedLocation = point;
-                    _currentStreet = null; // Reset street name
+                    _currentStreet = null; // Reset street name for fetching
                   });
                   _fetchStreetName(point);
                 },
@@ -460,63 +544,96 @@ class _MyHomePageState extends State<MyHomePage> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
+                          if (_selectedLocation != null) ...[
+                            Text(
+                              'Selected Location:',
+                              style: const TextStyle(
+                                  fontSize: 14, fontWeight: FontWeight.bold),
+                            ),
+                            Text(
+                              'Latitude: ${_selectedLocation!.latitude}, Longitude: ${_selectedLocation!.longitude}',
+                              style: const TextStyle(fontSize: 14),
+                            ),
+                            Text(
+                              'Street Name: ${_currentStreet ?? "Fetching..."}',
+                              style: const TextStyle(fontSize: 14),
+                            ),
+                          ] else if (_startingLocation == null) ...[
+                            const Text(
+                              'Tap on the map to select a location or import data.',
+                              style: TextStyle(fontSize: 14),
+                            ),
+                          ],
                           if (_isStartingPointChosen &&
                               _startingLocation != null) ...[
+                            const SizedBox(height: 10),
                             Text(
-                              'Starting Point is chosen: $_startingLocation at $_startingStreet',
-                              textAlign: TextAlign.left,
+                              'Starting Point is chosen:',
+                              style: const TextStyle(
+                                  fontSize: 14, fontWeight: FontWeight.bold),
+                            ),
+                            Text(
+                              '$_startingLocation at $_startingStreet',
                               style: const TextStyle(fontSize: 14),
                             ),
                           ],
-                          ..._nextPoints.asMap().entries.map((entry) {
-                            int index = entry.key;
-                            Map<String, dynamic> point = entry.value;
-                            final routeCoordinates =
-                                index < _routes.length ? _routes[index] : [];
-                            return Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  'Next Point is chosen: ${point['location']} at ${point['street']}',
-                                  textAlign: TextAlign.left,
-                                  style: const TextStyle(fontSize: 14),
-                                ),
-                                if (routeCoordinates.isNotEmpty)
+                          if (_nextPoints.isNotEmpty) ...[
+                            const SizedBox(height: 10),
+                            Text(
+                              'Next Points:',
+                              style: const TextStyle(
+                                  fontSize: 14, fontWeight: FontWeight.bold),
+                            ),
+                            ..._nextPoints.asMap().entries.map((entry) {
+                              int index = entry.key;
+                              Map<String, dynamic> point = entry.value;
+                              final routeCoordinates =
+                                  index < _routes.length ? _routes[index] : [];
+                              return Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
                                   Text(
-                                    'Route Coordinates: ${routeCoordinates.map((c) => "[${c[0]}, ${c[1]}]").join(", ")}',
-                                    textAlign: TextAlign.left,
-                                    style: const TextStyle(fontSize: 12),
+                                    'Next Point: ${point['location']} at ${point['street']}',
+                                    style: const TextStyle(fontSize: 14),
                                   ),
-                              ],
-                            );
-                          }).toList(),
-                          if (_selectedLocation != null &&
-                              !_nextPoints.any((point) =>
-                                  point['location'] == _selectedLocation)) ...[
+                                  if (routeCoordinates.isNotEmpty)
+                                    Text(
+                                      'Route Coordinates: ${routeCoordinates.map((c) => "[${c[0]}, ${c[1]}]").join(", ")}',
+                                      style: const TextStyle(fontSize: 12),
+                                    ),
+                                ],
+                              );
+                            }).toList(),
+                          ],
+                          if (_importedContent.isNotEmpty) ...[
                             Text(
-                              'Next Point: Latitude: ${_selectedLocation!.latitude}, Longitude: ${_selectedLocation!.longitude}',
-                              textAlign: TextAlign.left,
+                              'Imported Data:',
+                              style: const TextStyle(
+                                  fontSize: 14, fontWeight: FontWeight.bold),
+                            ),
+                            Text(
+                              _importedContent,
                               style: const TextStyle(fontSize: 14),
                             ),
-                            Text(
-                              'Next Street: ${_currentStreet ?? "Fetching..."}',
-                              textAlign: TextAlign.left,
-                              style: const TextStyle(fontSize: 14),
-                            ),
-                          ] else if (_selectedLocation == null)
-                            const Text(
-                              'Tap on the map to select a location.',
-                              style: TextStyle(fontSize: 14),
-                            ),
+                          ],
                         ],
                       ),
                     ),
                   ),
                 ),
               ),
-              ElevatedButton(
-                onPressed: _showExportDialog,
-                child: const Text('Export'),
+              Column(
+                children: [
+                  ElevatedButton(
+                    onPressed: _importFile,
+                    child: const Text('Import'),
+                  ),
+                  const SizedBox(height: 10), // Add spacing between buttons
+                  ElevatedButton(
+                    onPressed: _showExportDialog,
+                    child: const Text('Export'),
+                  ),
+                ],
               ),
             ],
           ),
