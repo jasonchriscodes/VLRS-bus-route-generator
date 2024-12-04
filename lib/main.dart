@@ -7,6 +7,7 @@ import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/services.dart'; // Import for Clipboard
 
 String _importedContent = '';
 
@@ -47,6 +48,27 @@ class _MyHomePageState extends State<MyHomePage> {
   List<List<List<double>>> _routes = []; // Store route coordinates
   List<Map<String, dynamic>> _suggestions = [];
   final TextEditingController _searchController = TextEditingController();
+
+  void _copyRouteCoordinates() {
+    // Format the coordinates as JSON
+    final formattedCoordinates = _routes
+        .expand((route) => route)
+        .map((coord) => {
+              "latitude": coord[1],
+              "longitude": coord[0],
+            })
+        .toList();
+
+    final jsonString = jsonEncode(formattedCoordinates);
+
+    // Copy to clipboard
+    Clipboard.setData(ClipboardData(text: jsonString));
+
+    // Show confirmation message
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Route coordinates copied to clipboard!')),
+    );
+  }
 
   Future<File> _getRouteFile() async {
     final directory = await getApplicationDocumentsDirectory();
@@ -632,6 +654,11 @@ class _MyHomePageState extends State<MyHomePage> {
                   ElevatedButton(
                     onPressed: _showExportDialog,
                     child: const Text('Export'),
+                  ),
+                  const SizedBox(height: 10), // Add spacing between buttons
+                  ElevatedButton(
+                    onPressed: _copyRouteCoordinates,
+                    child: const Text('Copy'),
                   ),
                 ],
               ),
