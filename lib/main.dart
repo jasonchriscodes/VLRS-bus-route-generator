@@ -414,10 +414,15 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 
   void _parseImportedContent(String content) {
-    final lines = content.split('\n');
-    _startingLocation = null;
-    _nextPoints.clear();
-    _routes.clear();
+    final lines = content.split('\n'); // Split content into lines
+    _startingLocation = null; // Clear starting location
+    _nextPoints.clear(); // Clear next points
+    _routes.clear(); // Clear routes
+
+    Map<String, dynamic>?
+        currentPoint; // Hold the current point being processed
+    List<List<double>> currentRoute =
+        []; // Hold the route for the current point
 
     for (final line in lines) {
       if (line.startsWith('Starting Point:')) {
@@ -434,6 +439,12 @@ class _MyHomePageState extends State<MyHomePage> {
           _isStartingPointChosen = true;
         }
       } else if (line.startsWith('Next Point:')) {
+        // Save the previous point and its route before processing a new point
+        if (currentPoint != null) {
+          _nextPoints.add(currentPoint);
+          _routes.add(currentRoute);
+        }
+
         // Extract next point and street
         final regex =
             RegExp(r'LatLng\(latitude:(.*?), longitude:(.*?)\) \((.*?)\)');
@@ -442,10 +453,11 @@ class _MyHomePageState extends State<MyHomePage> {
           final lat = double.parse(match.group(1)!);
           final lon = double.parse(match.group(2)!);
           final street = match.group(3);
-          _nextPoints.add({
+          currentPoint = {
             'location': LatLng(lat, lon),
             'street': street,
-          });
+          };
+          currentRoute = []; // Reset current route for the new point
         }
       } else if (line.contains('Route:')) {
         // Extract route coordinates
@@ -455,15 +467,41 @@ class _MyHomePageState extends State<MyHomePage> {
           final coords = match.group(1)!.split(', ').map(double.parse).toList();
           return coords;
         }).toList();
-        _routes.add(route);
+
+        currentRoute = route; // Assign the route to the current point
       }
     }
+
+    // Add the last point and its route after the loop
+    if (currentPoint != null) {
+      _nextPoints.add(currentPoint);
+      _routes.add(currentRoute);
+    }
+
+    // Update _importedContent to display all imported data
+    final List<String> importedLines = [];
+    if (_startingLocation != null) {
+      importedLines.add(
+          'Starting Point: LatLng(latitude:${_startingLocation!.latitude}, longitude:${_startingLocation!.longitude}) ($_startingStreet)');
+    }
+
+    for (int i = 0; i < _nextPoints.length; i++) {
+      final point = _nextPoints[i];
+      final routeCoordinates = i < _routes.length ? _routes[i] : [];
+      importedLines.add(
+          'Next Point: LatLng(latitude:${point['location'].latitude}, longitude:${point['location'].longitude}) (${point['street']}) Route: ${routeCoordinates.map((c) => "[${c[0]}, ${c[1]}]").join(", ")}');
+    }
+
+    setState(() {
+      _importedContent =
+          importedLines.join('\n'); // Update imported content for display
+    });
   }
 
   @override
   Widget build(BuildContext context) {
     final double sectionHeight =
-        MediaQuery.of(context).size.height * 0.1; // Adjust section height
+        MediaQuery.of(context).size.height * 0.3; // Adjust section height
 
     return Scaffold(
       appBar: AppBar(title: const Text('Map Viewer')),
@@ -657,7 +695,59 @@ class _MyHomePageState extends State<MyHomePage> {
                   ),
                   const SizedBox(height: 10), // Add spacing between buttons
                   ElevatedButton(
-                    onPressed: _copyRouteCoordinates,
+                    // onPressed: _copyRouteCoordinates,
+                    onPressed: () {
+                      // Build the content dynamically from the displayed widgets
+                      final StringBuffer content = StringBuffer();
+
+                      if (_selectedLocation != null) {
+                        content.writeln('Selected Location:');
+                        content.writeln(
+                            'Latitude: ${_selectedLocation!.latitude}, Longitude: ${_selectedLocation!.longitude}');
+                        content.writeln(
+                            'Street Name: ${_currentStreet ?? "Fetching..."}');
+                      } else if (_startingLocation == null) {
+                        content.writeln(
+                            'Tap on the map to select a location or import data.');
+                      }
+
+                      if (_isStartingPointChosen && _startingLocation != null) {
+                        content.writeln('Starting Point is chosen:');
+                        content
+                            .writeln('$_startingLocation at $_startingStreet');
+                      }
+
+                      if (_nextPoints.isNotEmpty) {
+                        content.writeln('Next Points:');
+                        for (int i = 0; i < _nextPoints.length; i++) {
+                          final point = _nextPoints[i];
+                          final routeCoordinates =
+                              i < _routes.length ? _routes[i] : [];
+                          content.writeln(
+                              'Next Point: ${point['location']} at ${point['street']}');
+                          if (routeCoordinates.isNotEmpty) {
+                            content.writeln(
+                                'Route Coordinates: ${routeCoordinates.map((c) => "[${c[0]}, ${c[1]}]").join(", ")}');
+                          }
+                        }
+                      }
+
+                      if (_importedContent.isNotEmpty) {
+                        content.writeln('Imported Data:');
+                        content.writeln(_importedContent);
+                      }
+
+                      // Copy the dynamically constructed content to clipboard
+                      Clipboard.setData(
+                          ClipboardData(text: content.toString()));
+
+                      // Show confirmation message
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                            content:
+                                Text('Displayed content copied to clipboard!')),
+                      );
+                    },
                     child: const Text('Copy'),
                   ),
                 ],
