@@ -646,11 +646,40 @@ class _MyHomePageState extends State<MyHomePage> {
                               style: const TextStyle(
                                   fontSize: 14, fontWeight: FontWeight.bold),
                             ),
-                            Text(
-                              _importedContent,
-                              style: const TextStyle(fontSize: 14),
+                            Container(
+                              height:
+                                  sectionHeight, // Adjust to fit within the designated height
+                              decoration: BoxDecoration(
+                                border: Border.all(
+                                    color: Colors.grey), // Optional border
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: Scrollbar(
+                                thumbVisibility: true,
+                                child: SingleChildScrollView(
+                                  controller: _scrollController,
+                                  child: TextField(
+                                    controller: TextEditingController(
+                                        text: _importedContent)
+                                      ..selection = TextSelection.collapsed(
+                                          offset: _importedContent.length),
+                                    maxLines: null, // Allows multi-line text
+                                    decoration: const InputDecoration(
+                                      border: InputBorder.none,
+                                      contentPadding: EdgeInsets.all(
+                                          8), // Padding inside the TextField
+                                    ),
+                                    onChanged: (value) {
+                                      setState(() {
+                                        _importedContent =
+                                            value; // Update content dynamically
+                                      });
+                                    },
+                                  ),
+                                ),
+                              ),
                             ),
-                          ],
+                          ]
                         ],
                       ),
                     ),
