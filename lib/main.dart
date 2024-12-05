@@ -529,6 +529,16 @@ class _MyHomePageState extends State<MyHomePage> {
     }
   }
 
+  void _deletePolylines() {
+    setState(() {
+      _polylines.clear(); // Clear all existing polylines
+    });
+    print('All polylines deleted.');
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('All polylines have been deleted!')),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final double sectionHeight =
@@ -749,6 +759,7 @@ class _MyHomePageState extends State<MyHomePage> {
               Column(
                 children: [
                   Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       ElevatedButton(
                         onPressed: makeRoutePolyline, // Trigger route creation
@@ -756,15 +767,34 @@ class _MyHomePageState extends State<MyHomePage> {
                       ),
                       const SizedBox(width: 10), // Space between buttons
                       ElevatedButton(
-                        onPressed: _importFile,
+                        onPressed: _importFile, // Import functionality
                         child: const Text('Import'),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 10), // Space below the row
-                  ElevatedButton(
-                    onPressed: _showExportDialog,
-                    child: const Text('Export'),
+                  const SizedBox(height: 10), // Add spacing between rows
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      ElevatedButton(
+                        onPressed: () {
+                          setState(() {
+                            _polylines.clear(); // Clear all polylines
+                          });
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                                content:
+                                    Text('All polylines have been deleted')),
+                          );
+                        },
+                        child: const Text('Delete Route'),
+                      ),
+                      const SizedBox(width: 10), // Space between buttons
+                      ElevatedButton(
+                        onPressed: _showExportDialog, // Export functionality
+                        child: const Text('Export'),
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 10), // Add spacing between buttons
                   ElevatedButton(
