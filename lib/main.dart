@@ -8,6 +8,8 @@ import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/services.dart'; // Import for Clipboard
+import 'package:url_launcher/url_launcher.dart';
+import 'package:open_file/open_file.dart';
 
 String _importedContent = '';
 List<Polyline> _polylines = [];
@@ -555,6 +557,27 @@ class _MyHomePageState extends State<MyHomePage> {
     );
   }
 
+  Future<void> _openPDF() async {
+    try {
+      // Load PDF from assets
+      final ByteData data =
+          await rootBundle.load('assets/how-to-create-route.pdf');
+
+      // Write the PDF to a temporary file
+      final Directory tempDir = await getTemporaryDirectory();
+      final File tempFile = File('${tempDir.path}/how-to-create-route.pdf');
+      await tempFile.writeAsBytes(data.buffer.asUint8List());
+
+      // Open the PDF file
+      OpenFile.open(tempFile.path);
+    } catch (e) {
+      // Handle error gracefully
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not open the PDF file: $e')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final double sectionHeight =
@@ -578,15 +601,24 @@ class _MyHomePageState extends State<MyHomePage> {
                     onChanged: (value) => _fetchSuggestions(value),
                   ),
                 ),
-                const SizedBox(width: 10),
-                ElevatedButton(
-                  onPressed: () {
-                    _choosePoint();
-                    _addRouteCoordinates();
-                  },
-                  child: Text(_isStartingPointChosen
-                      ? 'Choose Next Point'
-                      : 'Choose Starting Point'),
+                Row(
+                  children: [
+                    ElevatedButton(
+                      onPressed: () {
+                        _choosePoint();
+                        _addRouteCoordinates();
+                      },
+                      child: Text(_isStartingPointChosen
+                          ? 'Choose Next Point'
+                          : 'Choose Starting Point'),
+                    ),
+                    const SizedBox(width: 10),
+                    IconButton(
+                      icon: Image.asset('assets/question.png'),
+                      iconSize: 40.0,
+                      onPressed: _openPDF,
+                    ),
+                  ],
                 ),
               ],
             ),
