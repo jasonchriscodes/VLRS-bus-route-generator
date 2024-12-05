@@ -49,27 +49,6 @@ class _MyHomePageState extends State<MyHomePage> {
   List<Map<String, dynamic>> _suggestions = [];
   final TextEditingController _searchController = TextEditingController();
 
-  void _copyRouteCoordinates() {
-    // Format the coordinates as JSON
-    final formattedCoordinates = _routes
-        .expand((route) => route)
-        .map((coord) => {
-              "latitude": coord[1],
-              "longitude": coord[0],
-            })
-        .toList();
-
-    final jsonString = jsonEncode(formattedCoordinates);
-
-    // Copy to clipboard
-    Clipboard.setData(ClipboardData(text: jsonString));
-
-    // Show confirmation message
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Route coordinates copied to clipboard!')),
-    );
-  }
-
   Future<File> _getRouteFile() async {
     final directory = await getApplicationDocumentsDirectory();
     return File('${directory.path}/route.txt');
@@ -112,7 +91,7 @@ class _MyHomePageState extends State<MyHomePage> {
       final point = _nextPoints[i];
       final routeCoordinates = i < _routes.length ? _routes[i] : [];
       lines.add(
-          'Next Point: ${point['location']} (${point['street']}) Route: ${routeCoordinates.map((c) => "[${c[0]}, ${c[1]}]").join(', ')}');
+          'Next Point: ${point['location']} (${point['street']}) Route Coordinates: ${routeCoordinates.map((c) => "[${c[0]}, ${c[1]}]").join(', ')}');
     }
     return lines.join('\n');
   }
@@ -285,18 +264,33 @@ class _MyHomePageState extends State<MyHomePage> {
 
   Future<void> _addRouteCoordinates() async {
     if (_isStartingPointChosen && _startingLocation != null) {
-      _routes.clear(); // Clear previous routes to avoid duplication
+      _routes.clear(); // Clear previous routes
       for (int i = 0; i < _nextPoints.length; i++) {
         LatLng start = i == 0
             ? _startingLocation!
             : _nextPoints[i - 1]['location'] as LatLng;
         LatLng end = _nextPoints[i]['location'] as LatLng;
-        final coordinates = await _fetchRouteCoordinates(start, end);
-        setState(() {
-          _routes.add(coordinates);
-        });
+
+        try {
+          final coordinates = await _fetchRouteCoordinates(start, end);
+          if (coordinates.isNotEmpty) {
+            print('Route from $start to $end: $coordinates');
+            _routes.add(coordinates);
+          } else {
+            print('No coordinates fetched for route from $start to $end.');
+          }
+        } catch (e) {
+          print('Error fetching coordinates for route from $start to $end: $e');
+        }
       }
-      _updateRouteFile(); // Update the file when route coordinates are added
+      if (_routes.isNotEmpty) {
+        print('All routes added: $_routes');
+      } else {
+        print('No valid routes added.');
+      }
+      _updateRouteFile(); // Update route file
+    } else {
+      print('Starting point not chosen or invalid.');
     }
   }
 
@@ -459,7 +453,7 @@ class _MyHomePageState extends State<MyHomePage> {
           };
           currentRoute = []; // Reset current route for the new point
         }
-      } else if (line.contains('Route:')) {
+      } else if (line.contains('Route Coordinates:')) {
         // Extract route coordinates
         final regex = RegExp(r'\[(.*?)\]');
         final matches = regex.allMatches(line);
@@ -477,25 +471,6 @@ class _MyHomePageState extends State<MyHomePage> {
       _nextPoints.add(currentPoint);
       _routes.add(currentRoute);
     }
-
-    // Update _importedContent to display all imported data
-    final List<String> importedLines = [];
-    if (_startingLocation != null) {
-      importedLines.add(
-          'Starting Point: LatLng(latitude:${_startingLocation!.latitude}, longitude:${_startingLocation!.longitude}) ($_startingStreet)');
-    }
-
-    for (int i = 0; i < _nextPoints.length; i++) {
-      final point = _nextPoints[i];
-      final routeCoordinates = i < _routes.length ? _routes[i] : [];
-      importedLines.add(
-          'Next Point: LatLng(latitude:${point['location'].latitude}, longitude:${point['location'].longitude}) (${point['street']}) Route: ${routeCoordinates.map((c) => "[${c[0]}, ${c[1]}]").join(", ")}');
-    }
-
-    setState(() {
-      _importedContent =
-          importedLines.join('\n'); // Update imported content for display
-    });
   }
 
   @override
@@ -663,7 +638,7 @@ class _MyHomePageState extends State<MyHomePage> {
                                     ),
                                 ],
                               );
-                            }).toList(),
+                            }).toList()
                           ],
                           if (_importedContent.isNotEmpty) ...[
                             Text(
@@ -695,58 +670,121 @@ class _MyHomePageState extends State<MyHomePage> {
                   ),
                   const SizedBox(height: 10), // Add spacing between buttons
                   ElevatedButton(
-                    // onPressed: _copyRouteCoordinates,
-                    onPressed: () {
-                      // Build the content dynamically from the displayed widgets
-                      final StringBuffer content = StringBuffer();
+                    onPressed: () async {
+                      try {
+                        print('Copy button pressed');
 
-                      if (_selectedLocation != null) {
-                        content.writeln('Selected Location:');
-                        content.writeln(
-                            'Latitude: ${_selectedLocation!.latitude}, Longitude: ${_selectedLocation!.longitude}');
-                        content.writeln(
-                            'Street Name: ${_currentStreet ?? "Fetching..."}');
-                      } else if (_startingLocation == null) {
-                        content.writeln(
-                            'Tap on the map to select a location or import data.');
-                      }
+                        // List to hold structured coordinate data
+                        final List<Map<String, double>> formattedCoordinates =
+                            [];
 
-                      if (_isStartingPointChosen && _startingLocation != null) {
-                        content.writeln('Starting Point is chosen:');
-                        content
-                            .writeln('$_startingLocation at $_startingStreet');
-                      }
-
-                      if (_nextPoints.isNotEmpty) {
-                        content.writeln('Next Points:');
-                        for (int i = 0; i < _nextPoints.length; i++) {
-                          final point = _nextPoints[i];
-                          final routeCoordinates =
-                              i < _routes.length ? _routes[i] : [];
-                          content.writeln(
-                              'Next Point: ${point['location']} at ${point['street']}');
-                          if (routeCoordinates.isNotEmpty) {
-                            content.writeln(
-                                'Route Coordinates: ${routeCoordinates.map((c) => "[${c[0]}, ${c[1]}]").join(", ")}');
+                        // Extract Route Coordinates from _routes
+                        for (final routeCoordinates in _routes) {
+                          for (final coordinate in routeCoordinates) {
+                            if (coordinate.length == 2) {
+                              formattedCoordinates.add({
+                                "latitude": coordinate[1],
+                                "longitude": coordinate[0],
+                              });
+                            }
                           }
                         }
+
+                        // Extract Route Coordinates from _importedContent
+                        final routeRegex = RegExp(
+                            r'Route Coordinates:\s*(\[.*?\](?:, \[.*?\])*)');
+                        final matches = routeRegex.allMatches(_importedContent);
+                        for (final match in matches) {
+                          final rawCoordinates = match.group(1);
+                          if (rawCoordinates != null) {
+                            final coordinateRegex = RegExp(r'\[(.*?),(.*?)\]');
+                            for (final coordinateMatch
+                                in coordinateRegex.allMatches(rawCoordinates)) {
+                              final latitude =
+                                  double.parse(coordinateMatch.group(2)!);
+                              final longitude =
+                                  double.parse(coordinateMatch.group(1)!);
+                              formattedCoordinates.add({
+                                "latitude": latitude,
+                                "longitude": longitude
+                              });
+                            }
+                          }
+                        }
+
+                        // Convert the list to JSON
+                        final String jsonCoordinates =
+                            jsonEncode(formattedCoordinates);
+
+                        // Copy to clipboard
+                        Clipboard.setData(ClipboardData(text: jsonCoordinates));
+
+                        // Show confirmation message
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text(
+                                'Route Coordinates copied to clipboard in JSON format!'),
+                          ),
+                        );
+                      } catch (e) {
+                        print('Error: $e');
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('Error: ${e.toString()}')),
+                        );
                       }
 
-                      if (_importedContent.isNotEmpty) {
-                        content.writeln('Imported Data:');
-                        content.writeln(_importedContent);
-                      }
+                      // // Copy the whole description
+                      // onPressed: () {
+                      //   // Build the content dynamically from the displayed widgets
+                      //   final StringBuffer content = StringBuffer();
 
-                      // Copy the dynamically constructed content to clipboard
-                      Clipboard.setData(
-                          ClipboardData(text: content.toString()));
+                      //   if (_selectedLocation != null) {
+                      //     content.writeln('Selected Location:');
+                      //     content.writeln(
+                      //         'Latitude: ${_selectedLocation!.latitude}, Longitude: ${_selectedLocation!.longitude}');
+                      //     content.writeln(
+                      //         'Street Name: ${_currentStreet ?? "Fetching..."}');
+                      //   } else if (_startingLocation == null) {
+                      //     content.writeln(
+                      //         'Tap on the map to select a location or import data.');
+                      //   }
 
-                      // Show confirmation message
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                            content:
-                                Text('Displayed content copied to clipboard!')),
-                      );
+                      //   if (_isStartingPointChosen && _startingLocation != null) {
+                      //     content.writeln('Starting Point is chosen:');
+                      //     content
+                      //         .writeln('$_startingLocation at $_startingStreet');
+                      //   }
+
+                      //   if (_nextPoints.isNotEmpty) {
+                      //     content.writeln('Next Points:');
+                      //     for (int i = 0; i < _nextPoints.length; i++) {
+                      //       final point = _nextPoints[i];
+                      //       final routeCoordinates =
+                      //           i < _routes.length ? _routes[i] : [];
+                      //       content.writeln(
+                      //           'Next Point: ${point['location']} at ${point['street']}');
+                      //       if (routeCoordinates.isNotEmpty) {
+                      //         content.writeln(
+                      //             'Route Coordinates: ${routeCoordinates.map((c) => "[${c[0]}, ${c[1]}]").join(", ")}');
+                      //       }
+                      //     }
+                      //   }
+
+                      //   if (_importedContent.isNotEmpty) {
+                      //     content.writeln('Imported Data:');
+                      //     content.writeln(_importedContent);
+                      //   }
+
+                      //   // Copy the dynamically constructed content to clipboard
+                      //   Clipboard.setData(
+                      //       ClipboardData(text: content.toString()));
+
+                      //   // Show confirmation message
+                      //   ScaffoldMessenger.of(context).showSnackBar(
+                      //     const SnackBar(
+                      //         content:
+                      //             Text('Displayed content copied to clipboard!')),
+                      //   );
                     },
                     child: const Text('Copy'),
                   ),
