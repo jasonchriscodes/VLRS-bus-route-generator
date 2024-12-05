@@ -10,6 +10,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/services.dart'; // Import for Clipboard
 
 String _importedContent = '';
+List<Polyline> _polylines = [];
 
 void main() {
   runApp(const MyApp());
@@ -473,6 +474,61 @@ class _MyHomePageState extends State<MyHomePage> {
     }
   }
 
+  void makeRoutePolyline() {
+    try {
+      print('Making route polyline');
+
+      // List to hold LatLng points for the polyline
+      final List<LatLng> polylinePoints = [];
+
+      // Extract Route Coordinates from _routes
+      for (final routeCoordinates in _routes) {
+        for (final coordinate in routeCoordinates) {
+          if (coordinate.length == 2) {
+            polylinePoints.add(LatLng(coordinate[1], coordinate[0]));
+          }
+        }
+      }
+
+      // Extract Route Coordinates from _importedContent
+      final routeRegex =
+          RegExp(r'Route Coordinates:\s*(\[.*?\](?:, \[.*?\])*)');
+      final matches = routeRegex.allMatches(_importedContent);
+      for (final match in matches) {
+        final rawCoordinates = match.group(1);
+        if (rawCoordinates != null) {
+          final coordinateRegex = RegExp(r'\[(.*?),(.*?)\]');
+          for (final coordinateMatch
+              in coordinateRegex.allMatches(rawCoordinates)) {
+            final latitude = double.parse(coordinateMatch.group(2)!);
+            final longitude = double.parse(coordinateMatch.group(1)!);
+            polylinePoints.add(LatLng(latitude, longitude));
+          }
+        }
+      }
+
+      if (polylinePoints.isNotEmpty) {
+        setState(() {
+          _polylines = [
+            Polyline(
+              points: polylinePoints,
+              strokeWidth: 4.0,
+              color: Colors.blue,
+            ),
+          ];
+        });
+        print('Polyline added with points: $polylinePoints');
+      } else {
+        print('No coordinates found to create polyline.');
+      }
+    } catch (e) {
+      print('Error creating polyline: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error creating polyline: ${e.toString()}')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final double sectionHeight =
@@ -542,6 +598,10 @@ class _MyHomePageState extends State<MyHomePage> {
                 TileLayer(
                   urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                   userAgentPackageName: 'com.example.app',
+                ),
+                PolylineLayer(
+                  polylines:
+                      _polylines, // Use the dynamically updated polyline list
                 ),
                 if (_selectedLocation != null)
                   MarkerLayer(
@@ -688,11 +748,20 @@ class _MyHomePageState extends State<MyHomePage> {
               ),
               Column(
                 children: [
-                  ElevatedButton(
-                    onPressed: _importFile,
-                    child: const Text('Import'),
+                  Row(
+                    children: [
+                      ElevatedButton(
+                        onPressed: makeRoutePolyline, // Trigger route creation
+                        child: const Text('Make Route'),
+                      ),
+                      const SizedBox(width: 10), // Space between buttons
+                      ElevatedButton(
+                        onPressed: _importFile,
+                        child: const Text('Import'),
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 10), // Add spacing between buttons
+                  const SizedBox(height: 10), // Space below the row
                   ElevatedButton(
                     onPressed: _showExportDialog,
                     child: const Text('Export'),
