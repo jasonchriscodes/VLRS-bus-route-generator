@@ -14,6 +14,8 @@ import 'package:open_file/open_file.dart';
 String _importedContent = '';
 List<Polyline> _polylines = [];
 
+List<Marker> _markers = [];
+
 void main() {
   runApp(const MyApp());
 }
@@ -359,12 +361,36 @@ class _MyHomePageState extends State<MyHomePage> {
           _startingLocation = _selectedLocation;
           _startingStreet = _currentStreet;
           _isStartingPointChosen = true;
+
+          // Add marker for starting point
+          _markers.add(Marker(
+            width: 40,
+            height: 40,
+            point: _startingLocation!,
+            child: const Icon(
+              Icons.circle,
+              color: Colors.red,
+              size: 10,
+            ),
+          ));
         } else {
           // Add next point
           _nextPoints.add({
             'location': _selectedLocation!,
             'street': _currentStreet ?? 'Unknown Street',
           });
+
+          // Add marker for the next point
+          _markers.add(Marker(
+            width: 40,
+            height: 40,
+            point: _selectedLocation!,
+            child: const Icon(
+              Icons.circle,
+              color: Colors.red,
+              size: 10,
+            ),
+          ));
         }
       });
       _updateRouteFile(); // Update route file
@@ -660,6 +686,9 @@ class _MyHomePageState extends State<MyHomePage> {
                 PolylineLayer(
                   polylines:
                       _polylines, // Use the dynamically updated polyline list
+                ),
+                MarkerLayer(
+                  markers: _markers, // Display markers from the `_markers` list
                 ),
                 if (_selectedLocation != null)
                   MarkerLayer(
