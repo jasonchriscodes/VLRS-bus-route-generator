@@ -10,6 +10,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/services.dart'; // Import for Clipboard
 import 'package:url_launcher/url_launcher.dart';
 import 'package:open_file/open_file.dart';
+import 'dart:collection';
 
 String _importedContent = '';
 List<Polyline> _polylines = [];
@@ -53,6 +54,42 @@ class _MyHomePageState extends State<MyHomePage> {
   List<List<List<double>>> _routes = []; // Store route coordinates
   List<Map<String, dynamic>> _suggestions = [];
   final TextEditingController _searchController = TextEditingController();
+
+  // Add a stack to store the history of states
+  final List<Map<String, dynamic>> _stateHistory = [];
+
+  void _saveState() {
+    // Save the current state
+    _stateHistory.add({
+      'nextPoints': List.from(_nextPoints),
+      'routes': List.from(_routes),
+      'markers': List.from(_markers),
+    });
+  }
+
+  void _undo() {
+    if (_stateHistory.isNotEmpty) {
+      // Restore the last saved state
+      final previousState = _stateHistory.removeLast();
+      setState(() {
+        _nextPoints =
+            List<Map<String, dynamic>>.from(previousState['nextPoints']);
+        _routes = List<List<List<double>>>.from(previousState['routes']);
+        _markers = List<Marker>.from(previousState['markers']);
+      });
+
+      // Update the route file after undo
+      _updateRouteFile();
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Undo successful!')),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Nothing to undo!')),
+      );
+    }
+  }
 
   Future<File> _getRouteFile() async {
     final directory = await getApplicationDocumentsDirectory();
@@ -356,6 +393,9 @@ class _MyHomePageState extends State<MyHomePage> {
   void _choosePoint() {
     if (_selectedLocation != null) {
       setState(() {
+        // Save the current state for undo
+        _saveState();
+
         if (!_isStartingPointChosen) {
           // Set starting point
           _startingLocation = _selectedLocation;
@@ -846,6 +886,11 @@ class _MyHomePageState extends State<MyHomePage> {
                       ElevatedButton(
                         onPressed: _importFile, // Import functionality
                         child: const Text('Import'),
+                      ),
+                      const SizedBox(width: 10), // Space between buttons
+                      ElevatedButton(
+                        onPressed: _undo, // Undo functionality
+                        child: const Text('Undo'),
                       ),
                     ],
                   ),
