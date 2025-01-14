@@ -76,10 +76,21 @@ class _MyHomePageState extends State<MyHomePage> {
             List<Map<String, dynamic>>.from(previousState['nextPoints']);
         _routes = List<List<List<double>>>.from(previousState['routes']);
         _markers = List<Marker>.from(previousState['markers']);
+        _polylines.clear();
+
+        // Rebuild polylines
+        for (final route in _routes) {
+          _polylines.add(
+            Polyline(
+              points: route.map((c) => LatLng(c[1], c[0])).toList(),
+              strokeWidth: 4.0,
+              color: Colors.blue,
+            ),
+          );
+        }
       });
 
-      // Update the route file after undo
-      _updateRouteFile();
+      _updateRouteFile(); // Update the route file after undo
 
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Undo successful!')),
@@ -293,6 +304,7 @@ class _MyHomePageState extends State<MyHomePage> {
                 .map<List<double>>(
                     (coord) => [coord[0] as double, coord[1] as double])
                 .toList();
+        print('Fetched coordinates: $coordinates');
         return coordinates;
       } else {
         print('Error fetching route: ${response.statusCode}');
@@ -393,16 +405,15 @@ class _MyHomePageState extends State<MyHomePage> {
   void _choosePoint() {
     if (_selectedLocation != null) {
       setState(() {
-        // Save the current state for undo
-        _saveState();
+        _saveState(); // Save the current state for undo
 
         if (!_isStartingPointChosen) {
-          // Set starting point
+          // Set the starting point
           _startingLocation = _selectedLocation;
           _startingStreet = _currentStreet;
           _isStartingPointChosen = true;
 
-          // Add marker for starting point
+          // Add marker for the starting point
           _markers.add(Marker(
             width: 40,
             height: 40,
@@ -414,7 +425,7 @@ class _MyHomePageState extends State<MyHomePage> {
             ),
           ));
         } else {
-          // Add next point
+          // Add the next point
           _nextPoints.add({
             'location': _selectedLocation!,
             'street': _currentStreet ?? 'Unknown Street',
@@ -431,9 +442,33 @@ class _MyHomePageState extends State<MyHomePage> {
               size: 10,
             ),
           ));
+
+          // Fetch route coordinates and update the polyline
+          if (_nextPoints.length > 0) {
+            LatLng start = _nextPoints.length == 1
+                ? _startingLocation!
+                : _nextPoints[_nextPoints.length - 2]['location'];
+            LatLng end = _nextPoints[_nextPoints.length - 1]['location'];
+
+            _fetchRouteCoordinates(start, end).then((coordinates) {
+              if (coordinates.isNotEmpty) {
+                setState(() {
+                  _routes.add(coordinates);
+                  _polylines.add(Polyline(
+                    points: coordinates.map((c) => LatLng(c[1], c[0])).toList(),
+                    strokeWidth: 4.0,
+                    color: Colors.blue,
+                  ));
+                });
+              } else {
+                print('No coordinates returned for the route.');
+              }
+            });
+          }
         }
       });
-      _updateRouteFile(); // Update route file
+
+      _updateRouteFile(); // Update the route file
     }
   }
 
@@ -724,8 +759,7 @@ class _MyHomePageState extends State<MyHomePage> {
                   userAgentPackageName: 'com.example.app',
                 ),
                 PolylineLayer(
-                  polylines:
-                      _polylines, // Use the dynamically updated polyline list
+                  polylines: _polylines,
                 ),
                 MarkerLayer(
                   markers: _markers, // Display markers from the `_markers` list
@@ -878,10 +912,6 @@ class _MyHomePageState extends State<MyHomePage> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      ElevatedButton(
-                        onPressed: makeRoutePolyline, // Trigger route creation
-                        child: const Text('Make Route'),
-                      ),
                       const SizedBox(width: 10), // Space between buttons
                       ElevatedButton(
                         onPressed: _importFile, // Import functionality
