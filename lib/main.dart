@@ -648,13 +648,30 @@ class _MyHomePageState extends State<MyHomePage> {
     }
   }
 
-  void _deletePolylines() {
+  void _deleteRoutes() {
     setState(() {
-      _polylines.clear(); // Clear all existing polylines
+      // Clear all routes, polylines, and markers
+      _polylines.clear();
+      _nextPoints.clear();
+      _routes.clear();
+      _markers.clear();
+
+      // Reset the state to initial
+      _isStartingPointChosen = false;
+      _startingLocation = null;
+      _startingStreet = null;
+      _selectedLocation = null;
+      _currentStreet = null;
+      _importedContent = '';
+
+      // Reset the route file to reflect cleared state
+      _updateRouteFile();
     });
-    print('All polylines deleted.');
+
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('All polylines have been deleted!')),
+      const SnackBar(
+          content:
+              Text('All routes, points, and descriptions have been cleared!')),
     );
   }
 
@@ -929,18 +946,10 @@ class _MyHomePageState extends State<MyHomePage> {
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       ElevatedButton(
-                        onPressed: () {
-                          setState(() {
-                            _polylines.clear(); // Clear all polylines
-                          });
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                                content:
-                                    Text('All polylines have been deleted')),
-                          );
-                        },
-                        child: const Text('Delete Route'),
+                        onPressed: _deleteRoutes, // Updated method name
+                        child: const Text('Delete Routes'),
                       ),
+
                       const SizedBox(width: 10), // Space between buttons
                       ElevatedButton(
                         onPressed: _showExportDialog, // Export functionality
