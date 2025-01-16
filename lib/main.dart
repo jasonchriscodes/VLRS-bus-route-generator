@@ -356,10 +356,9 @@ class _MyHomePageState extends State<MyHomePage> {
       return;
     }
 
-    const String apiKey =
-        '5b3ce3597851110001cf624804ab2baa18644cc6b65c5829826b6117';
+    const String apiKey = '7Lz8icqmjz4UvEALltZQALkwdQrVo2TO';
     final String url =
-        'https://api.openrouteservice.org/geocode/search?api_key=$apiKey&text=$query&size=5';
+        'https://api.tomtom.com/search/2/search/$query.json?key=$apiKey&limit=5';
 
     try {
       final response = await http.get(Uri.parse(url));
@@ -367,10 +366,13 @@ class _MyHomePageState extends State<MyHomePage> {
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         setState(() {
-          _suggestions = (data['features'] as List)
-              .map((feature) => {
-                    'label': feature['properties']['label'] as String,
-                    'coordinates': feature['geometry']['coordinates'] as List
+          _suggestions = (data['results'] as List)
+              .map((result) => {
+                    'label': result['address']['freeformAddress'],
+                    'coordinates': [
+                      result['position']['lon'],
+                      result['position']['lat']
+                    ],
                   })
               .toList();
         });
@@ -378,6 +380,7 @@ class _MyHomePageState extends State<MyHomePage> {
         setState(() {
           _suggestions = [];
         });
+        print('Error fetching suggestions: ${response.statusCode}');
       }
     } catch (e) {
       setState(() {
