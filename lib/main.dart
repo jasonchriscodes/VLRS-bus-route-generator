@@ -712,9 +712,18 @@ class _MyHomePageState extends State<MyHomePage> {
                 Flexible(
                   child: TextField(
                     controller: _searchController,
-                    decoration: const InputDecoration(
+                    decoration: InputDecoration(
                       labelText: 'Search for a location',
                       border: OutlineInputBorder(),
+                      suffixIcon: IconButton(
+                        icon: Icon(Icons.clear),
+                        onPressed: () {
+                          setState(() {
+                            _searchController.clear(); // Clear the text field
+                            _suggestions = []; // Clear search suggestions
+                          });
+                        },
+                      ),
                     ),
                     onChanged: (value) => _fetchSuggestions(value),
                   ),
