@@ -276,6 +276,10 @@ class _MyHomePageState extends State<MyHomePage> {
         setState(() {
           _currentStreet = data['features'][0]['properties']['street'] ??
               'Street name not available';
+          final streetNo =
+              data['features'][0]['properties']['housenumber'] ?? 'N/A';
+          // Set the street number as part of the display
+          _currentStreet = '$streetNo ${_currentStreet ?? "Unknown"}';
         });
       } else {
         setState(() {
@@ -390,16 +394,20 @@ class _MyHomePageState extends State<MyHomePage> {
     }
   }
 
-  void _selectSuggestion(Map<String, dynamic> suggestion) {
+  void _selectSuggestion(Map<String, dynamic> suggestion) async {
     final List coordinates = suggestion['coordinates'];
     final double lon = coordinates[0];
     final double lat = coordinates[1];
+    final LatLng location = LatLng(lat, lon);
 
     setState(() {
-      _selectedLocation = LatLng(lat, lon);
+      _selectedLocation = location;
       _searchController.text = suggestion['label'];
       _suggestions = [];
     });
+
+    // Fetch the street name and number for the selected location
+    await _fetchStreetName(location);
 
     // Move the map to the selected location and zoom in
     _mapController.move(_selectedLocation!, 16); // Zoom level 16
