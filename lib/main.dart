@@ -59,11 +59,13 @@ class _MyHomePageState extends State<MyHomePage> {
   final List<Map<String, dynamic>> _stateHistory = [];
 
   void _saveState() {
-    // Save the current state
     _stateHistory.add({
       'nextPoints': List.from(_nextPoints),
       'routes': List.from(_routes),
       'markers': List.from(_markers),
+      'startingLocation': _startingLocation,
+      'startingStreet': _startingStreet,
+      'isStartingPointChosen': _isStartingPointChosen,
     });
   }
 
@@ -74,8 +76,12 @@ class _MyHomePageState extends State<MyHomePage> {
         _nextPoints = List<Map<String, dynamic>>.from(lastState['nextPoints']);
         _routes = List<List<List<double>>>.from(lastState['routes']);
         _markers = List<Marker>.from(lastState['markers']);
-        _polylines.clear();
+        _startingLocation = lastState['startingLocation'];
+        _startingStreet = lastState['startingStreet'];
+        _isStartingPointChosen = lastState['isStartingPointChosen'];
 
+        // Rebuild polylines
+        _polylines.clear();
         for (final route in _routes) {
           _polylines.add(
             Polyline(
@@ -87,7 +93,7 @@ class _MyHomePageState extends State<MyHomePage> {
         }
       });
 
-      _updateRouteFile();
+      _updateRouteFile(); // Update the route file after undo
 
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Undo successful!')),
