@@ -69,16 +69,13 @@ class _MyHomePageState extends State<MyHomePage> {
 
   void _undo() {
     if (_stateHistory.isNotEmpty) {
-      // Restore the last saved state
-      final previousState = _stateHistory.removeLast();
+      final lastState = _stateHistory.removeLast();
       setState(() {
-        _nextPoints =
-            List<Map<String, dynamic>>.from(previousState['nextPoints']);
-        _routes = List<List<List<double>>>.from(previousState['routes']);
-        _markers = List<Marker>.from(previousState['markers']);
+        _nextPoints = List<Map<String, dynamic>>.from(lastState['nextPoints']);
+        _routes = List<List<List<double>>>.from(lastState['routes']);
+        _markers = List<Marker>.from(lastState['markers']);
         _polylines.clear();
 
-        // Rebuild polylines
         for (final route in _routes) {
           _polylines.add(
             Polyline(
@@ -90,7 +87,7 @@ class _MyHomePageState extends State<MyHomePage> {
         }
       });
 
-      _updateRouteFile(); // Update the route file after undo
+      _updateRouteFile();
 
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Undo successful!')),
@@ -143,8 +140,9 @@ class _MyHomePageState extends State<MyHomePage> {
     for (int i = 0; i < _nextPoints.length; i++) {
       final point = _nextPoints[i];
       final routeCoordinates = i < _routes.length ? _routes[i] : [];
+      final durationMinutes = (point['duration'] ?? 0) / 60;
       lines.add(
-          'Next Point: ${point['location']} (${point['street']}) Route Coordinates: ${routeCoordinates.map((c) => "[${c[0]}, ${c[1]}]").join(', ')}');
+          'Next Point: ${point['location']} (${point['street']}) Duration: ${durationMinutes.toStringAsFixed(1)} minutes Route Coordinates: ${routeCoordinates.map((c) => "[${c[0]}, ${c[1]}]").join(', ')}');
     }
     return lines.join('\n');
   }
@@ -175,16 +173,14 @@ class _MyHomePageState extends State<MyHomePage> {
           ),
           actions: [
             TextButton(
-              onPressed: () {
-                Navigator.of(context).pop();
-              },
+              onPressed: () => Navigator.of(context).pop(),
               child: const Text('Cancel'),
             ),
             TextButton(
               onPressed: () {
-                final fileName = fileNameController.text.isEmpty
-                    ? 'route.txt'
-                    : fileNameController.text;
+                final fileName = fileNameController.text.isNotEmpty
+                    ? fileNameController.text
+                    : 'route.txt';
                 Navigator.of(context).pop();
                 _exportRouteFile(fileName);
               },
@@ -240,17 +236,13 @@ class _MyHomePageState extends State<MyHomePage> {
 
   Future<void> _exportRouteFile(String fileName) async {
     try {
-      // Use scoped storage for Android 11+
       final directory = Directory('/storage/emulated/0/Documents');
       if (!await directory.exists()) {
         await directory.create(recursive: true);
       }
 
       final file = File('${directory.path}/$fileName');
-      final String content = _generateRouteFileContent();
-
-      await file.writeAsString(content);
-
+      await file.writeAsString(_generateRouteFileContent());
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('File exported to ${file.path}')),
       );
@@ -263,92 +255,98 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 
   Future<void> _fetchStreetName(LatLng point) async {
-    const String apiKey =
-        '5b3ce3597851110001cf624804ab2baa18644cc6b65c5829826b6117';
-    final String url =
+    const apiKey = '5b3ce3597851110001cf624804ab2baa18644cc6b65c5829826b6117';
+    final url =
         'https://api.openrouteservice.org/geocode/reverse?api_key=$apiKey&point.lat=${point.latitude}&point.lon=${point.longitude}';
 
     try {
       final response = await http.get(Uri.parse(url));
-
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         setState(() {
-          _currentStreet = data['features'][0]['properties']['street'] ??
-              'Street name not available';
+          _currentStreet =
+              data['features'][0]['properties']['street'] ?? 'Unknown Street';
           final streetNo =
               data['features'][0]['properties']['housenumber'] ?? 'N/A';
-          // Set the street number as part of the display
-          _currentStreet = '$streetNo ${_currentStreet ?? "Unknown"}';
+          _currentStreet = '$streetNo $_currentStreet';
         });
       } else {
-        setState(() {
-          _currentStreet = 'Error retrieving street name';
-        });
+        throw Exception(
+            'Failed to fetch street name. HTTP Status: ${response.statusCode}');
       }
     } catch (e) {
       setState(() {
-        _currentStreet = 'Error retrieving street name';
+        _currentStreet = 'Error fetching street name';
       });
+      print('Error fetching street name: $e');
     }
   }
 
-  Future<List<List<double>>> _fetchRouteCoordinates(
+  Future<Map<String, dynamic>> _fetchRouteCoordinatesWithDuration(
       LatLng start, LatLng end) async {
-    final String url =
+    final url =
         'http://43.226.218.99:8080/ors/v2/directions/driving-car?start=${start.longitude},${start.latitude}&end=${end.longitude},${end.latitude}&format=geojson';
 
     try {
       final response = await http.get(Uri.parse(url));
-
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
+        if (data['features'] == null || data['features'].isEmpty) {
+          throw Exception('No route data available.');
+        }
         final coordinates =
             (data['features'][0]['geometry']['coordinates'] as List)
                 .map<List<double>>(
                     (coord) => [coord[0] as double, coord[1] as double])
                 .toList();
-        print('Fetched coordinates: $coordinates');
-        return coordinates;
+        final duration =
+            data['features'][0]['properties']['segments'][0]['duration'];
+        return {'coordinates': coordinates, 'duration': duration};
       } else {
-        print('Error fetching route: ${response.statusCode}');
-        return [];
+        throw Exception(
+            'Failed to fetch route. HTTP Status: ${response.statusCode}');
       }
     } catch (e) {
       print('Error fetching route: $e');
-      return [];
+      return {'coordinates': [], 'duration': 0};
     }
   }
 
   Future<void> _addRouteCoordinates() async {
     if (_isStartingPointChosen && _startingLocation != null) {
-      _routes.clear(); // Clear previous routes
+      _routes.clear();
+      _polylines.clear();
+
       for (int i = 0; i < _nextPoints.length; i++) {
-        LatLng start = i == 0
-            ? _startingLocation!
-            : _nextPoints[i - 1]['location'] as LatLng;
-        LatLng end = _nextPoints[i]['location'] as LatLng;
+        LatLng start =
+            i == 0 ? _startingLocation! : _nextPoints[i - 1]['location'];
+        LatLng end = _nextPoints[i]['location'];
 
         try {
-          final coordinates = await _fetchRouteCoordinates(start, end);
-          if (coordinates.isNotEmpty) {
-            print('Route from $start to $end: $coordinates');
-            _routes.add(coordinates);
-          } else {
-            print('No coordinates fetched for route from $start to $end.');
+          final result = await _fetchRouteCoordinatesWithDuration(start, end);
+          if (result['coordinates'].isNotEmpty) {
+            _routes.add(result['coordinates']);
+            setState(() {
+              _nextPoints[i]['duration'] = result['duration'];
+            });
           }
         } catch (e) {
-          print('Error fetching coordinates for route from $start to $end: $e');
+          print('Error adding route coordinates for segment $i: $e');
         }
       }
-      if (_routes.isNotEmpty) {
-        print('All routes added: $_routes');
-      } else {
-        print('No valid routes added.');
-      }
-      _updateRouteFile(); // Update route file
-    } else {
-      print('Starting point not chosen or invalid.');
+
+      setState(() {
+        for (final route in _routes) {
+          _polylines.add(
+            Polyline(
+              points: route.map((c) => LatLng(c[1], c[0])).toList(),
+              strokeWidth: 4.0,
+              color: Colors.blue,
+            ),
+          );
+        }
+      });
+      await _updateRouteFile();
     }
   }
 
@@ -455,24 +453,33 @@ class _MyHomePageState extends State<MyHomePage> {
           ));
 
           // Fetch route coordinates and update the polyline
-          if (_nextPoints.length > 0) {
+          if (_nextPoints.isNotEmpty) {
             LatLng start = _nextPoints.length == 1
                 ? _startingLocation!
                 : _nextPoints[_nextPoints.length - 2]['location'];
-            LatLng end = _nextPoints[_nextPoints.length - 1]['location'];
+            LatLng end = _nextPoints.last['location'];
 
-            _fetchRouteCoordinates(start, end).then((coordinates) {
+            _fetchRouteCoordinatesWithDuration(start, end).then((result) {
+              final coordinates = result['coordinates'];
+              final duration = result['duration'];
+
               if (coordinates.isNotEmpty) {
                 setState(() {
                   _routes.add(coordinates);
-                  _polylines.add(Polyline(
-                    points: coordinates.map((c) => LatLng(c[1], c[0])).toList(),
-                    strokeWidth: 4.0,
-                    color: Colors.blue,
-                  ));
+                  _polylines.add(
+                    Polyline(
+                      points:
+                          coordinates.map((c) => LatLng(c[1], c[0])).toList(),
+                      strokeWidth: 4.0,
+                      color: Colors.blue,
+                    ),
+                  );
+
+                  // Update the duration for the respective point
+                  if (_nextPoints.isNotEmpty) {
+                    _nextPoints.last['duration'] = duration;
+                  }
                 });
-              } else {
-                print('No coordinates returned for the route.');
               }
             });
           }
@@ -661,13 +668,13 @@ class _MyHomePageState extends State<MyHomePage> {
 
   void _deleteRoutes() {
     setState(() {
-      // Clear all routes, polylines, and markers
+      // Clear all data structures and reset state variables
       _polylines.clear();
       _nextPoints.clear();
       _routes.clear();
       _markers.clear();
 
-      // Reset the state to initial
+      // Reset flags and other related state
       _isStartingPointChosen = false;
       _startingLocation = null;
       _startingStreet = null;
@@ -675,9 +682,15 @@ class _MyHomePageState extends State<MyHomePage> {
       _currentStreet = null;
       _importedContent = '';
 
-      // Reset the route file to reflect cleared state
+      // Reset the route file to ensure persistence
       _updateRouteFile();
     });
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+          content:
+              Text('All routes, points, and descriptions have been cleared!')),
+    );
 
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
@@ -882,12 +895,19 @@ class _MyHomePageState extends State<MyHomePage> {
                               Map<String, dynamic> point = entry.value;
                               final routeCoordinates =
                                   index < _routes.length ? _routes[index] : [];
+                              final durationMinutes =
+                                  (point['duration'] ?? 0) / 60;
                               return Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(
                                     'Next Point: ${point['location']} at ${point['street']}',
                                     style: const TextStyle(fontSize: 14),
+                                  ),
+                                  Text(
+                                    'Duration: ${durationMinutes.toStringAsFixed(1)} minutes',
+                                    style: const TextStyle(
+                                        fontSize: 14, color: Colors.black),
                                   ),
                                   if (routeCoordinates.isNotEmpty)
                                     Text(
