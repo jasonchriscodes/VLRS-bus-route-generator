@@ -148,7 +148,7 @@ class _MyHomePageState extends State<MyHomePage> {
       final routeCoordinates = i < _routes.length ? _routes[i] : [];
       final durationMinutes = (point['duration'] ?? 0) / 60;
       lines.add(
-          'Next Point: ${point['location']} (${point['street']}) Duration: ${durationMinutes.toStringAsFixed(1)} minutes Route Coordinates: ${routeCoordinates.map((c) => "[${c[0]}, ${c[1]}]").join(', ')}');
+          'Next Point: ${point['location']} (${point['street']}) Duration: ${durationMinutes.toStringAsFixed(1)} minutes Route Coordinates: ${routeCoordinates.map((c) => "[${c[0]}, ${c[1]}]").join(", ")}');
     }
     return lines.join('\n');
   }
@@ -498,106 +498,144 @@ class _MyHomePageState extends State<MyHomePage> {
 
   Future<void> _importFile() async {
     try {
-      // Open the file picker
+      // Open file picker to select the text file
       final result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
-        allowedExtensions: ['txt'], // Allow only .txt files
+        allowedExtensions: ['txt'],
       );
 
-      if (result != null && result.files.single.path != null) {
-        final file = File(result.files.single.path!);
+      if (result != null) {
+        final filePath = result.files.single.path!;
+        final file = File(filePath);
 
-        // Read file content
+        // Read the content of the file
         final content = await file.readAsString();
-
-        // Parse content to update state
-        _parseImportedContent(content);
-
-        // Display the content in the container
         setState(() {
           _importedContent = content;
         });
 
+        // Parse the imported content
+        final lines = content.split('\n');
+        LatLng? startingPoint;
+        String? startingStreet;
+        List<Map<String, dynamic>> parsedNextPoints = [];
+        List<List<List<double>>> parsedRoutes = [];
+
+        for (var line in lines) {
+          if (line.startsWith('Starting Point:')) {
+            final regex = RegExp(
+                r'Starting Point: LatLng\(latitude:(.*?), longitude:(.*?)\) \((.*?)\)');
+            final match = regex.firstMatch(line);
+            if (match != null) {
+              startingPoint = LatLng(
+                double.parse(match.group(1)!),
+                double.parse(match.group(2)!),
+              );
+              startingStreet = match.group(3);
+            }
+          } else if (line.startsWith('Next Point:')) {
+            final regex = RegExp(
+                r'Next Point: LatLng\(latitude:(.*?), longitude:(.*?)\) \((.*?)\) Duration: (.*?) minutes Route Coordinates: (.*?)$');
+            final match = regex.firstMatch(line);
+            if (match != null) {
+              final point = LatLng(
+                double.parse(match.group(1)!),
+                double.parse(match.group(2)!),
+              );
+              final street = match.group(3);
+              final duration =
+                  double.parse(match.group(4)!) * 60; // Convert to seconds
+              final routeCoordinatesString = match.group(5);
+
+              // Parse route coordinates
+              final coordinatesRegex = RegExp(r'\[(.*?),(.*?)\]');
+              final routeCoordinates = coordinatesRegex
+                  .allMatches(routeCoordinatesString!)
+                  .map((m) => [
+                        double.parse(m.group(1)!),
+                        double.parse(m.group(2)!),
+                      ])
+                  .toList();
+
+              parsedNextPoints.add({
+                'location': point,
+                'street': street,
+                'duration': duration,
+              });
+              parsedRoutes.add(routeCoordinates);
+            }
+          }
+        }
+
+        // Update the map state
+        setState(() {
+          _saveState(); // Save current state for undo
+
+          if (startingPoint != null) {
+            _isStartingPointChosen = true;
+            _startingLocation = startingPoint;
+            _startingStreet = startingStreet;
+
+            // Add marker for starting point
+            _markers.add(
+              Marker(
+                width: 40,
+                height: 40,
+                point: startingPoint,
+                child: const Icon(
+                  Icons.circle,
+                  color: Colors.red,
+                  size: 10,
+                ),
+              ),
+            );
+          }
+
+          for (int i = 0; i < parsedNextPoints.length; i++) {
+            final nextPoint = parsedNextPoints[i];
+            _nextPoints.add(nextPoint);
+
+            // Add marker for each next point
+            _markers.add(
+              Marker(
+                width: 40,
+                height: 40,
+                point: nextPoint['location'],
+                child: const Icon(
+                  Icons.circle,
+                  color: Colors.red,
+                  size: 10,
+                ),
+              ),
+            );
+
+            // Add route coordinates to the polyline
+            if (i < parsedRoutes.length) {
+              final routeCoordinates = parsedRoutes[i];
+              _routes.add(routeCoordinates);
+              _polylines.add(
+                Polyline(
+                  points:
+                      routeCoordinates.map((c) => LatLng(c[1], c[0])).toList(),
+                  strokeWidth: 4.0,
+                  color: Colors.blue,
+                ),
+              );
+            }
+          }
+        });
+
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('File imported successfully')),
+          const SnackBar(content: Text('File imported successfully!')),
         );
       } else {
-        // User canceled file selection
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('No file selected')),
-        );
+        print('No file selected');
       }
     } catch (e) {
       print('Error importing file: $e');
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Error importing file')),
       );
-    }
-  }
-
-  void _parseImportedContent(String content) {
-    final lines = content.split('\n'); // Split content into lines
-    _startingLocation = null; // Clear starting location
-    _nextPoints.clear(); // Clear next points
-    _routes.clear(); // Clear routes
-
-    Map<String, dynamic>?
-        currentPoint; // Hold the current point being processed
-    List<List<double>> currentRoute =
-        []; // Hold the route for the current point
-
-    for (final line in lines) {
-      if (line.startsWith('Starting Point:')) {
-        // Extract starting point and street
-        final regex =
-            RegExp(r'LatLng\(latitude:(.*?), longitude:(.*?)\) \((.*?)\)');
-        final match = regex.firstMatch(line);
-        if (match != null) {
-          final lat = double.parse(match.group(1)!);
-          final lon = double.parse(match.group(2)!);
-          final street = match.group(3);
-          _startingLocation = LatLng(lat, lon);
-          _startingStreet = street;
-          _isStartingPointChosen = true;
-        }
-      } else if (line.startsWith('Next Point:')) {
-        // Save the previous point and its route before processing a new point
-        if (currentPoint != null) {
-          _nextPoints.add(currentPoint);
-          _routes.add(currentRoute);
-        }
-
-        // Extract next point and street
-        final regex =
-            RegExp(r'LatLng\(latitude:(.*?), longitude:(.*?)\) \((.*?)\)');
-        final match = regex.firstMatch(line);
-        if (match != null) {
-          final lat = double.parse(match.group(1)!);
-          final lon = double.parse(match.group(2)!);
-          final street = match.group(3);
-          currentPoint = {
-            'location': LatLng(lat, lon),
-            'street': street,
-          };
-          currentRoute = []; // Reset current route for the new point
-        }
-      } else if (line.contains('Route Coordinates:')) {
-        // Extract route coordinates
-        final regex = RegExp(r'\[(.*?)\]');
-        final matches = regex.allMatches(line);
-        final route = matches.map((match) {
-          final coords = match.group(1)!.split(', ').map(double.parse).toList();
-          return coords;
-        }).toList();
-
-        currentRoute = route; // Assign the route to the current point
-      }
-    }
-
-    // Add the last point and its route after the loop
-    if (currentPoint != null) {
-      _nextPoints.add(currentPoint);
-      _routes.add(currentRoute);
     }
   }
 
@@ -931,34 +969,18 @@ class _MyHomePageState extends State<MyHomePage> {
                                   fontSize: 14, fontWeight: FontWeight.bold),
                             ),
                             Container(
-                              height:
-                                  sectionHeight, // Adjust to fit within the designated height
+                              height: sectionHeight,
                               decoration: BoxDecoration(
-                                border: Border.all(
-                                    color: Colors.grey), // Optional border
+                                border: Border.all(color: Colors.grey),
                                 borderRadius: BorderRadius.circular(4),
                               ),
                               child: Scrollbar(
                                 thumbVisibility: true,
                                 child: SingleChildScrollView(
                                   controller: _scrollController,
-                                  child: TextField(
-                                    controller: TextEditingController(
-                                        text: _importedContent)
-                                      ..selection = TextSelection.collapsed(
-                                          offset: _importedContent.length),
-                                    maxLines: null, // Allows multi-line text
-                                    decoration: const InputDecoration(
-                                      border: InputBorder.none,
-                                      contentPadding: EdgeInsets.all(
-                                          8), // Padding inside the TextField
-                                    ),
-                                    onChanged: (value) {
-                                      setState(() {
-                                        _importedContent =
-                                            value; // Update content dynamically
-                                      });
-                                    },
+                                  child: Text(
+                                    _importedContent,
+                                    style: const TextStyle(fontSize: 14),
                                   ),
                                 ),
                               ),
