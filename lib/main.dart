@@ -1189,10 +1189,16 @@ class _MyHomePageState extends State<MyHomePage> {
                                     index < _routes.length
                                         ? _routes[index]
                                         : [];
+
                                 return {
                                   "latitude": point["location"].latitude,
                                   "longitude": point["location"].longitude,
                                   "address": point["street"],
+                                  "duration": point.containsKey("duration")
+                                      ? (point["duration"] / 60)
+                                              .toStringAsFixed(1) +
+                                          " minutes"
+                                      : "N/A", // Convert seconds to minutes
                                   "route_coordinates": routeCoordinates
                                 };
                               }).toList()
