@@ -291,7 +291,9 @@ class _MyHomePageState extends State<MyHomePage> {
   Future<Map<String, dynamic>> _fetchRouteCoordinatesWithDuration(
       LatLng start, LatLng end) async {
     final url =
-        'http://43.226.218.99:8080/ors/v2/directions/driving-car?start=${start.longitude},${start.latitude}&end=${end.longitude},${end.latitude}&format=geojson';
+    // 'http://43.226.218.99:8080/ors/v2/directions/driving-car?start=${start.longitude},${start.latitude}&end=${end.longitude},${end.latitude}&format=geojson';
+
+    'https://api.openrouteservice.org/v2/directions/driving-car?api_key=5b3ce3597851110001cf624804ab2baa18644cc6b65c5829826b6117&start=${start.longitude},${start.latitude}&end=${end.longitude},${end.latitude}&format=geojson';
 
     try {
       final response = await http.get(Uri.parse(url));
