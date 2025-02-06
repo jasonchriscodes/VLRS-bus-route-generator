@@ -291,9 +291,9 @@ class _MyHomePageState extends State<MyHomePage> {
   Future<Map<String, dynamic>> _fetchRouteCoordinatesWithDuration(
       LatLng start, LatLng end) async {
     final url =
-    // 'http://43.226.218.99:8080/ors/v2/directions/driving-car?start=${start.longitude},${start.latitude}&end=${end.longitude},${end.latitude}&format=geojson';
+        // 'http://43.226.218.99:8080/ors/v2/directions/driving-car?start=${start.longitude},${start.latitude}&end=${end.longitude},${end.latitude}&format=geojson';
 
-    'https://api.openrouteservice.org/v2/directions/driving-car?api_key=5b3ce3597851110001cf624804ab2baa18644cc6b65c5829826b6117&start=${start.longitude},${start.latitude}&end=${end.longitude},${end.latitude}&format=geojson';
+        'https://api.openrouteservice.org/v2/directions/driving-car?api_key=5b3ce3597851110001cf624804ab2baa18644cc6b65c5829826b6117&start=${start.longitude},${start.latitude}&end=${end.longitude},${end.latitude}&format=geojson';
 
     try {
       final response = await http.get(Uri.parse(url));
@@ -1036,6 +1036,7 @@ class _MyHomePageState extends State<MyHomePage> {
                       ),
                       const SizedBox(width: 10), // Space between buttons
                       ElevatedButton(
+                        // Copy only lat and long
                         // onPressed: () async {
                         //   try {
                         //     print('Copy button pressed');
@@ -1103,59 +1104,124 @@ class _MyHomePageState extends State<MyHomePage> {
                         //   }
 
                         // Copy the whole description
+                        // onPressed: () {
+                        //   // Build the content dynamically from the displayed widgets
+                        //   final StringBuffer content = StringBuffer();
+
+                        //   if (_selectedLocation != null) {
+                        //     content.writeln('Selected Location:');
+                        //     content.writeln(
+                        //         'Latitude: ${_selectedLocation!.latitude}, Longitude: ${_selectedLocation!.longitude}');
+                        //     content.writeln(
+                        //         'Street Name: ${_currentStreet ?? "Fetching..."}');
+                        //   } else if (_startingLocation == null) {
+                        //     content.writeln(
+                        //         'Tap on the map to select a location or import data.');
+                        //   }
+
+                        //   if (_isStartingPointChosen &&
+                        //       _startingLocation != null) {
+                        //     content.writeln('Starting Point is chosen:');
+                        //     content.writeln(
+                        //         '$_startingLocation at $_startingStreet');
+                        //   }
+
+                        //   if (_nextPoints.isNotEmpty) {
+                        //     content.writeln('Next Points:');
+                        //     for (int i = 0; i < _nextPoints.length; i++) {
+                        //       final point = _nextPoints[i];
+                        //       final routeCoordinates =
+                        //           i < _routes.length ? _routes[i] : [];
+                        //       content.writeln(
+                        //           'Next Point: ${point['location']} at ${point['street']}');
+                        //       if (routeCoordinates.isNotEmpty) {
+                        //         content.writeln(
+                        //             'Route Coordinates: ${routeCoordinates.map((c) => "[${c[0]}, ${c[1]}]").join(", ")}');
+                        //       }
+                        //     }
+                        //   }
+
+                        //   if (_importedContent.isNotEmpty) {
+                        //     content.writeln('Imported Data:');
+                        //     content.writeln(_importedContent);
+                        //   }
+
+                        //   // Copy the dynamically constructed content to clipboard
+                        //   Clipboard.setData(
+                        //       ClipboardData(text: content.toString()));
+
+                        //   // Show confirmation message
+                        //   ScaffoldMessenger.of(context).showSnackBar(
+                        //     const SnackBar(
+                        //         content: Text(
+                        //             'Displayed content copied to clipboard!')),
+                        //   );
+                        // },
+
+                        // Copy to JSON format
                         onPressed: () {
-                          // Build the content dynamically from the displayed widgets
-                          final StringBuffer content = StringBuffer();
+                          try {
+                            print('Copy button pressed');
 
-                          if (_selectedLocation != null) {
-                            content.writeln('Selected Location:');
-                            content.writeln(
-                                'Latitude: ${_selectedLocation!.latitude}, Longitude: ${_selectedLocation!.longitude}');
-                            content.writeln(
-                                'Street Name: ${_currentStreet ?? "Fetching..."}');
-                          } else if (_startingLocation == null) {
-                            content.writeln(
-                                'Tap on the map to select a location or import data.');
-                          }
+                            // Construct JSON structure
+                            Map<String, dynamic> jsonData = {
+                              "selected_location": _selectedLocation != null
+                                  ? {
+                                      "latitude": _selectedLocation!.latitude,
+                                      "longitude": _selectedLocation!.longitude,
+                                      "street_name":
+                                          _currentStreet ?? "Fetching..."
+                                    }
+                                  : null,
+                              "starting_point": _isStartingPointChosen &&
+                                      _startingLocation != null
+                                  ? {
+                                      "latitude": _startingLocation!.latitude,
+                                      "longitude": _startingLocation!.longitude,
+                                      "address": _startingStreet ?? "Unknown"
+                                    }
+                                  : null,
+                              "next_points":
+                                  _nextPoints.asMap().entries.map((entry) {
+                                int index = entry.key;
+                                Map<String, dynamic> point = entry.value;
+                                List<List<double>> routeCoordinates =
+                                    index < _routes.length
+                                        ? _routes[index]
+                                        : [];
+                                return {
+                                  "latitude": point["location"].latitude,
+                                  "longitude": point["location"].longitude,
+                                  "address": point["street"],
+                                  "route_coordinates": routeCoordinates
+                                };
+                              }).toList()
+                            };
 
-                          if (_isStartingPointChosen &&
-                              _startingLocation != null) {
-                            content.writeln('Starting Point is chosen:');
-                            content.writeln(
-                                '$_startingLocation at $_startingStreet');
-                          }
+                            // Remove null values from the JSON
+                            jsonData.removeWhere((key, value) => value == null);
 
-                          if (_nextPoints.isNotEmpty) {
-                            content.writeln('Next Points:');
-                            for (int i = 0; i < _nextPoints.length; i++) {
-                              final point = _nextPoints[i];
-                              final routeCoordinates =
-                                  i < _routes.length ? _routes[i] : [];
-                              content.writeln(
-                                  'Next Point: ${point['location']} at ${point['street']}');
-                              if (routeCoordinates.isNotEmpty) {
-                                content.writeln(
-                                    'Route Coordinates: ${routeCoordinates.map((c) => "[${c[0]}, ${c[1]}]").join(", ")}');
-                              }
-                            }
-                          }
+                            // Convert the structured data to a JSON string
+                            final String jsonString = jsonEncode(jsonData);
 
-                          if (_importedContent.isNotEmpty) {
-                            content.writeln('Imported Data:');
-                            content.writeln(_importedContent);
-                          }
+                            // Copy JSON to clipboard
+                            Clipboard.setData(ClipboardData(text: jsonString));
 
-                          // Copy the dynamically constructed content to clipboard
-                          Clipboard.setData(
-                              ClipboardData(text: content.toString()));
-
-                          // Show confirmation message
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
+                            // Show confirmation message
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
                                 content: Text(
-                                    'Displayed content copied to clipboard!')),
-                          );
+                                    'Route data copied to clipboard in JSON format!'),
+                              ),
+                            );
+                          } catch (e) {
+                            print('Error: $e');
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text('Error: ${e.toString()}')),
+                            );
+                          }
                         },
+
                         child: const Text('Copy'),
                       ),
                     ],
