@@ -1163,49 +1163,45 @@ class _MyHomePageState extends State<MyHomePage> {
                           try {
                             print('Copy button pressed');
 
-                            // Construct JSON structure
-                            Map<String, dynamic> jsonData = {
-                              "selected_location": _selectedLocation != null
-                                  ? {
-                                      "latitude": _selectedLocation!.latitude,
-                                      "longitude": _selectedLocation!.longitude,
-                                      "street_name":
-                                          _currentStreet ?? "Fetching..."
-                                    }
-                                  : null,
-                              "starting_point": _isStartingPointChosen &&
-                                      _startingLocation != null
-                                  ? {
-                                      "latitude": _startingLocation!.latitude,
-                                      "longitude": _startingLocation!.longitude,
-                                      "address": _startingStreet ?? "Unknown"
-                                    }
-                                  : null,
-                              "next_points":
-                                  _nextPoints.asMap().entries.map((entry) {
-                                int index = entry.key;
-                                Map<String, dynamic> point = entry.value;
-                                List<List<double>> routeCoordinates =
-                                    index < _routes.length
-                                        ? _routes[index]
-                                        : [];
+                            // Construct JSON structure with the new format
+                            List<Map<String, dynamic>> jsonData = [
+                              {
+                                "starting_point": _isStartingPointChosen &&
+                                        _startingLocation != null
+                                    ? {
+                                        "latitude": _startingLocation!.latitude,
+                                        "longitude":
+                                            _startingLocation!.longitude,
+                                        "address": _startingStreet ?? "Unknown"
+                                      }
+                                    : null,
+                                "next_points":
+                                    _nextPoints.asMap().entries.map((entry) {
+                                  int index = entry.key;
+                                  Map<String, dynamic> point = entry.value;
+                                  List<List<double>> routeCoordinates =
+                                      index < _routes.length
+                                          ? _routes[index]
+                                          : [];
 
-                                return {
-                                  "latitude": point["location"].latitude,
-                                  "longitude": point["location"].longitude,
-                                  "address": point["street"],
-                                  "duration": point.containsKey("duration")
-                                      ? (point["duration"] / 60)
-                                              .toStringAsFixed(1) +
-                                          " minutes"
-                                      : "N/A", // Convert seconds to minutes
-                                  "route_coordinates": routeCoordinates
-                                };
-                              }).toList()
-                            };
+                                  return {
+                                    "latitude": point["location"].latitude,
+                                    "longitude": point["location"].longitude,
+                                    "address": point["street"],
+                                    "duration": point.containsKey("duration")
+                                        ? (point["duration"] / 60)
+                                                .toStringAsFixed(1) +
+                                            " minutes"
+                                        : "N/A", // Convert seconds to minutes
+                                    "route_coordinates": routeCoordinates
+                                  };
+                                }).toList()
+                              }
+                            ];
 
                             // Remove null values from the JSON
-                            jsonData.removeWhere((key, value) => value == null);
+                            jsonData.removeWhere(
+                                (element) => element["starting_point"] == null);
 
                             // Convert the structured data to a JSON string
                             final String jsonString = jsonEncode(jsonData);
