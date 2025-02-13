@@ -700,9 +700,13 @@ class _MyHomePageState extends State<MyHomePage> {
     if (_startingLocation != null) {
       setState(() {
         _selectedLocation = _startingLocation;
+        _currentStreet = _startingStreet;
         _mapController.move(_startingLocation!, 16); // Zoom level 16
+
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Moved to starting point!')),
+          const SnackBar(
+              content:
+                  Text('Moved to starting point! Selected location updated.')),
         );
       });
     } else {
