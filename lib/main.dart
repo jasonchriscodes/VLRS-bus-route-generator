@@ -366,6 +366,26 @@ class _MyHomePageState extends State<MyHomePage> {
       return;
     }
 
+    // Check if the query matches a latitude, longitude pattern
+    final coordinateRegex = RegExp(r'^(-?\d+(\.\d+)?),\s*(-?\d+(\.\d+)?)$');
+    if (coordinateRegex.hasMatch(query)) {
+      final match = coordinateRegex.firstMatch(query)!;
+      final double lat = double.parse(match.group(1)!);
+      final double lon = double.parse(match.group(3)!);
+
+      // Move the map to the entered coordinates
+      final LatLng location = LatLng(lat, lon);
+      setState(() {
+        _selectedLocation = location;
+        _searchController.text = 'Lat: $lat, Lon: $lon';
+        _suggestions = [];
+      });
+
+      _mapController.move(_selectedLocation!, 16); // Zoom level 16
+      return; // No need to continue with API suggestions
+    }
+
+    // Existing suggestion logic using TomTom API
     const String apiKey = '7Lz8icqmjz4UvEALltZQALkwdQrVo2TO';
     final String url =
         'https://api.tomtom.com/search/2/search/$query.json?key=$apiKey&limit=5';
