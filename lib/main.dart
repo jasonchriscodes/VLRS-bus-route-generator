@@ -140,16 +140,34 @@ class _MyHomePageState extends State<MyHomePage> {
 
   String _generateRouteFileContent() {
     final List<String> lines = [];
+
     if (_isStartingPointChosen && _startingLocation != null) {
       lines.add('Starting Point: $_startingLocation ($_startingStreet)');
     }
+
     for (int i = 0; i < _nextPoints.length; i++) {
       final point = _nextPoints[i];
-      final routeCoordinates = i < _routes.length ? _routes[i] : [];
+      final routeCoordinates =
+          i < _routes.length ? List<List<double>>.from(_routes[i]) : [];
+
+      // Add starting point to the first route segment
+      if (i == 0 && _isStartingPointChosen && _startingLocation != null) {
+        routeCoordinates.insert(
+            0, [_startingLocation!.longitude, _startingLocation!.latitude]);
+      }
+
+      // Add ending point to the last route segment
+      if (i == _nextPoints.length - 1) {
+        routeCoordinates
+            .add([point['location'].longitude, point['location'].latitude]);
+      }
+
       final durationMinutes = (point['duration'] ?? 0) / 60;
+
       lines.add(
           'Next Point: ${point['location']} (${point['street']}) Duration: ${durationMinutes.toStringAsFixed(1)} minutes Route Coordinates: ${routeCoordinates.map((c) => "[${c[0]}, ${c[1]}]").join(", ")}');
     }
+
     return lines.join('\n');
   }
 
@@ -332,7 +350,19 @@ class _MyHomePageState extends State<MyHomePage> {
 
         try {
           final result = await _fetchRouteCoordinatesWithDuration(start, end);
+
           if (result['coordinates'].isNotEmpty) {
+            // Add start point at the beginning of the first segment
+            if (i == 0) {
+              result['coordinates']
+                  .insert(0, [start.longitude, start.latitude]);
+            }
+
+            // Add end point at the end of the last segment
+            if (i == _nextPoints.length - 1) {
+              result['coordinates'].add([end.longitude, end.latitude]);
+            }
+
             _routes.add(result['coordinates']);
             setState(() {
               _nextPoints[i]['duration'] = result['duration'];
@@ -354,6 +384,7 @@ class _MyHomePageState extends State<MyHomePage> {
           );
         }
       });
+
       await _updateRouteFile();
     }
   }
