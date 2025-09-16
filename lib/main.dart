@@ -907,7 +907,17 @@ class _MyHomePageState extends State<MyHomePage> {
               children: [
                 TileLayer(
                   urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                  userAgentPackageName: 'com.example.app',
+                  // Reduce extra tile requests
+                  panBuffer: 0,
+                  // Use your actual Android applicationId / iOS bundle id:
+                  userAgentPackageName: 'com.jason.publisher',
+                  // Add a clear, contactable User-Agent (mailto is fine if no website)
+                  tileProvider: NetworkTileProvider(
+                    headers: {
+                      'User-Agent':
+                          'BusFlow-Personal/0.1 (+mailto:vlrs13542@gmail.com)',
+                    },
+                  ),
                 ),
                 PolylineLayer(
                   polylines: _polylines,
@@ -933,6 +943,19 @@ class _MyHomePageState extends State<MyHomePage> {
                       ),
                     ],
                   ),
+              ],
+              nonRotatedChildren: [
+                RichAttributionWidget(
+                  attributions: [
+                    TextSourceAttribution(
+                      'OpenStreetMap contributors',
+                      prependCopyright: true,
+                      onTap: () => launchUrl(
+                        Uri.parse('https://www.openstreetmap.org/copyright'),
+                      ),
+                    ),
+                  ],
+                ),
               ],
             ),
           ),
