@@ -184,13 +184,13 @@ class _MyHomePageState extends State<MyHomePage> {
 
   void _showExportDialog() {
     final TextEditingController fileNameController =
-        TextEditingController(text: 'route.txt');
+        TextEditingController(text: 'busRouteData.json');
 
     showDialog(
       context: context,
       builder: (context) {
         return AlertDialog(
-          title: const Text('Export File'),
+          title: const Text('Export JSON'),
           content: TextField(
             controller: fileNameController,
             decoration: const InputDecoration(labelText: 'File Name'),
@@ -202,11 +202,13 @@ class _MyHomePageState extends State<MyHomePage> {
             ),
             TextButton(
               onPressed: () {
-                final fileName = fileNameController.text.isNotEmpty
-                    ? fileNameController.text
-                    : 'route.txt';
+                var fileName = fileNameController.text.trim();
+                if (fileName.isEmpty) fileName = 'busRouteData.json';
+                if (!fileName.toLowerCase().endsWith('.json')) {
+                  fileName = '$fileName.json';
+                }
                 Navigator.of(context).pop();
-                _exportRouteFile(fileName);
+                _exportRouteJson(fileName);
               },
               child: const Text('OK'),
             ),
@@ -214,6 +216,103 @@ class _MyHomePageState extends State<MyHomePage> {
         );
       },
     );
+  }
+
+  Future<void> _exportRouteJson(String fileName) async {
+    try {
+      if (_startingLocation == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+              content: Text('Please choose a starting point first.')),
+        );
+        return;
+      }
+
+      // Build ONE route object exactly like your expected schema
+      final Map<String, dynamic> routeObj = {
+        "starting_point": {
+          "latitude": _startingLocation!.latitude,
+          "longitude": _startingLocation!.longitude,
+          "address": _startingStreet ?? "Unknown",
+        },
+        "next_points": List.generate(_nextPoints.length, (i) {
+          final point = _nextPoints[i];
+
+          // clone [lon, lat] pairs for this segment
+          final List<List<double>> coords = i < _routes.length
+              ? _routes[i].map<List<double>>((c) => [c[0], c[1]]).toList()
+              : <List<double>>[];
+
+          // ensure first segment starts at starting_point
+          if (i == 0) {
+            final sLon = _startingLocation!.longitude;
+            final sLat = _startingLocation!.latitude;
+            if (coords.isEmpty ||
+                coords.first[0] != sLon ||
+                coords.first[1] != sLat) {
+              coords.insert(0, [sLon, sLat]);
+            }
+          } else {
+            // later segments should start at previous next_point
+            final prev = _nextPoints[i - 1]['location'] as LatLng;
+            if (coords.isEmpty ||
+                coords.first[0] != prev.longitude ||
+                coords.first[1] != prev.latitude) {
+              coords.insert(0, [prev.longitude, prev.latitude]);
+            }
+          }
+
+          // ensure each segment ends at its next point
+          final eLon = (point["location"] as LatLng).longitude;
+          final eLat = (point["location"] as LatLng).latitude;
+          if (coords.isEmpty ||
+              coords.last[0] != eLon ||
+              coords.last[1] != eLat) {
+            coords.add([eLon, eLat]);
+          }
+
+          final durationMin = (point["duration"] ?? 0) / 60.0;
+
+          return {
+            "latitude": eLat,
+            "longitude": eLon,
+            "address": point["street"],
+            "duration": "${durationMin.toStringAsFixed(1)} minutes",
+            "route_coordinates": coords,
+          };
+        }),
+      };
+
+      // Save/append to /Documents/<fileName> as an array
+      final directory = Directory('/storage/emulated/0/Documents');
+      if (!await directory.exists()) {
+        await directory.create(recursive: true);
+      }
+      final file = File('${directory.path}/$fileName');
+
+      List<dynamic> payload = <dynamic>[];
+      if (await file.exists()) {
+        try {
+          final existing = jsonDecode(await file.readAsString());
+          if (existing is List) {
+            payload = existing;
+          }
+        } catch (_) {
+          // if invalid JSON, start fresh
+          payload = <dynamic>[];
+        }
+      }
+      payload.add(routeObj);
+
+      await file.writeAsString(jsonEncode(payload));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Exported to ${file.path}')),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error exporting JSON: $e')),
+      );
+    }
   }
 
   Future<void> requestStoragePermission() async {
@@ -959,7 +1058,7 @@ class _MyHomePageState extends State<MyHomePage> {
                       const SizedBox(width: 10), // Space between buttons
                       ElevatedButton(
                         onPressed: _showExportDialog, // Export functionality
-                        child: const Text('Export'),
+                        child: const Text('Export JSON'),
                       ),
                     ],
                   ),
