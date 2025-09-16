@@ -1069,11 +1069,6 @@ class _MyHomePageState extends State<MyHomePage> {
                         onPressed: backToStart, // Move to starting point
                         child: const Text('Back To Start'),
                       ),
-                      const SizedBox(width: 10), // Space between buttons
-                      ElevatedButton(
-                        onPressed: _downloadRouteJson,
-                        child: const Text('Download JSON'),
-                      ),
                     ],
                   )
                 ],
@@ -1083,90 +1078,6 @@ class _MyHomePageState extends State<MyHomePage> {
         ],
       ),
     );
-  }
-
-  Future<void> _downloadRouteJson() async {
-    try {
-      if (_startingLocation == null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-              content: Text('Please choose a starting point first.')),
-        );
-        return;
-      }
-
-      // Build ONE route object in the required format
-      final Map<String, dynamic> routeObj = {
-        "starting_point": {
-          "latitude": _startingLocation!.latitude,
-          "longitude": _startingLocation!.longitude,
-          "address": _startingStreet ?? "Unknown",
-        },
-        "next_points": List.generate(_nextPoints.length, (i) {
-          final point = _nextPoints[i];
-          // Clone route coordinates (lon, lat pairs)
-          final List<List<double>> coords = i < _routes.length
-              ? _routes[i].map<List<double>>((c) => [c[0], c[1]]).toList()
-              : <List<double>>[];
-
-          // Ensure first segment starts at starting_point
-          if (i == 0) {
-            final sLon = _startingLocation!.longitude;
-            final sLat = _startingLocation!.latitude;
-            if (coords.isEmpty ||
-                coords.first[0] != sLon ||
-                coords.first[1] != sLat) {
-              coords.insert(0, [sLon, sLat]);
-            }
-          }
-
-          // Ensure each segment ends at this next point
-          final eLon = point["location"].longitude as double;
-          final eLat = point["location"].latitude as double;
-          if (coords.isEmpty ||
-              coords.last[0] != eLon ||
-              coords.last[1] != eLat) {
-            coords.add([eLon, eLat]);
-          }
-
-          final durationMin = (point["duration"] ?? 0) / 60.0;
-
-          return {
-            "latitude": eLat,
-            "longitude": eLon,
-            "address": point["street"],
-            "duration": "${durationMin.toStringAsFixed(1)} minutes",
-            "route_coordinates": coords,
-          };
-        }),
-      };
-
-      // Prepare Documents/in.json and append (or create) array
-      final dir = Directory('/storage/emulated/0/Documents');
-      if (!await dir.exists()) await dir.create(recursive: true);
-      final file = File('${dir.path}/busRouteData.json');
-
-      List<dynamic> payload = <dynamic>[];
-      if (await file.exists()) {
-        try {
-          final existing = jsonDecode(await file.readAsString());
-          if (existing is List) payload = existing;
-        } catch (_) {
-          // If the existing file isn’t valid JSON array, start fresh
-          payload = <dynamic>[];
-        }
-      }
-      payload.add(routeObj);
-
-      await file.writeAsString(jsonEncode(payload));
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Saved to ${file.path}')),
-      );
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error: $e')),
-      );
-    }
   }
 
   double _parseDurationToSeconds(dynamic value) {
