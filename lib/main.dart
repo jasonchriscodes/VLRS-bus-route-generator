@@ -184,13 +184,13 @@ class _MyHomePageState extends State<MyHomePage> {
 
   void _showExportDialog() {
     final TextEditingController fileNameController =
-        TextEditingController(text: 'busRouteData.json');
+        TextEditingController(text: 'route.txt');
 
     showDialog(
       context: context,
       builder: (context) {
         return AlertDialog(
-          title: const Text('Export JSON'),
+          title: const Text('Export File'),
           content: TextField(
             controller: fileNameController,
             decoration: const InputDecoration(labelText: 'File Name'),
@@ -202,13 +202,11 @@ class _MyHomePageState extends State<MyHomePage> {
             ),
             TextButton(
               onPressed: () {
-                var fileName = fileNameController.text.trim();
-                if (fileName.isEmpty) fileName = 'busRouteData.json';
-                if (!fileName.toLowerCase().endsWith('.json')) {
-                  fileName = '$fileName.json';
-                }
+                final fileName = fileNameController.text.isNotEmpty
+                    ? fileNameController.text
+                    : 'route.txt';
                 Navigator.of(context).pop();
-                _exportRouteJson(fileName);
+                _exportRouteFile(fileName);
               },
               child: const Text('OK'),
             ),
@@ -216,103 +214,6 @@ class _MyHomePageState extends State<MyHomePage> {
         );
       },
     );
-  }
-
-  Future<void> _exportRouteJson(String fileName) async {
-    try {
-      if (_startingLocation == null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-              content: Text('Please choose a starting point first.')),
-        );
-        return;
-      }
-
-      // Build ONE route object exactly like your expected schema
-      final Map<String, dynamic> routeObj = {
-        "starting_point": {
-          "latitude": _startingLocation!.latitude,
-          "longitude": _startingLocation!.longitude,
-          "address": _startingStreet ?? "Unknown",
-        },
-        "next_points": List.generate(_nextPoints.length, (i) {
-          final point = _nextPoints[i];
-
-          // clone [lon, lat] pairs for this segment
-          final List<List<double>> coords = i < _routes.length
-              ? _routes[i].map<List<double>>((c) => [c[0], c[1]]).toList()
-              : <List<double>>[];
-
-          // ensure first segment starts at starting_point
-          if (i == 0) {
-            final sLon = _startingLocation!.longitude;
-            final sLat = _startingLocation!.latitude;
-            if (coords.isEmpty ||
-                coords.first[0] != sLon ||
-                coords.first[1] != sLat) {
-              coords.insert(0, [sLon, sLat]);
-            }
-          } else {
-            // later segments should start at previous next_point
-            final prev = _nextPoints[i - 1]['location'] as LatLng;
-            if (coords.isEmpty ||
-                coords.first[0] != prev.longitude ||
-                coords.first[1] != prev.latitude) {
-              coords.insert(0, [prev.longitude, prev.latitude]);
-            }
-          }
-
-          // ensure each segment ends at its next point
-          final eLon = (point["location"] as LatLng).longitude;
-          final eLat = (point["location"] as LatLng).latitude;
-          if (coords.isEmpty ||
-              coords.last[0] != eLon ||
-              coords.last[1] != eLat) {
-            coords.add([eLon, eLat]);
-          }
-
-          final durationMin = (point["duration"] ?? 0) / 60.0;
-
-          return {
-            "latitude": eLat,
-            "longitude": eLon,
-            "address": point["street"],
-            "duration": "${durationMin.toStringAsFixed(1)} minutes",
-            "route_coordinates": coords,
-          };
-        }),
-      };
-
-      // Save/append to /Documents/<fileName> as an array
-      final directory = Directory('/storage/emulated/0/Documents');
-      if (!await directory.exists()) {
-        await directory.create(recursive: true);
-      }
-      final file = File('${directory.path}/$fileName');
-
-      List<dynamic> payload = <dynamic>[];
-      if (await file.exists()) {
-        try {
-          final existing = jsonDecode(await file.readAsString());
-          if (existing is List) {
-            payload = existing;
-          }
-        } catch (_) {
-          // if invalid JSON, start fresh
-          payload = <dynamic>[];
-        }
-      }
-      payload.add(routeObj);
-
-      await file.writeAsString(jsonEncode(payload));
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Exported to ${file.path}')),
-      );
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error exporting JSON: $e')),
-      );
-    }
   }
 
   Future<void> requestStoragePermission() async {
@@ -645,6 +546,149 @@ class _MyHomePageState extends State<MyHomePage> {
       });
 
       _updateRouteFile(); // Update the route file
+    }
+  }
+
+  Future<void> _importFile() async {
+    try {
+      // Open file picker to select the text file
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['txt'],
+      );
+
+      if (result != null) {
+        final filePath = result.files.single.path!;
+        final file = File(filePath);
+
+        // Read the content of the file
+        final content = await file.readAsString();
+        setState(() {
+          _importedContent = content;
+        });
+
+        // Parse the imported content
+        final lines = content.split('\n');
+        LatLng? startingPoint;
+        String? startingStreet;
+        List<Map<String, dynamic>> parsedNextPoints = [];
+        List<List<List<double>>> parsedRoutes = [];
+
+        for (var line in lines) {
+          if (line.startsWith('Starting Point:')) {
+            final regex = RegExp(
+                r'Starting Point: LatLng\(latitude:(.*?), longitude:(.*?)\) \((.*?)\)');
+            final match = regex.firstMatch(line);
+            if (match != null) {
+              startingPoint = LatLng(
+                double.parse(match.group(1)!),
+                double.parse(match.group(2)!),
+              );
+              startingStreet = match.group(3);
+            }
+          } else if (line.startsWith('Next Point:')) {
+            final regex = RegExp(
+                r'Next Point: LatLng\(latitude:(.*?), longitude:(.*?)\) \((.*?)\) Duration: (.*?) minutes Route Coordinates: (.*?)$');
+            final match = regex.firstMatch(line);
+            if (match != null) {
+              final point = LatLng(
+                double.parse(match.group(1)!),
+                double.parse(match.group(2)!),
+              );
+              final street = match.group(3);
+              final duration =
+                  double.parse(match.group(4)!) * 60; // Convert to seconds
+              final routeCoordinatesString = match.group(5);
+
+              // Parse route coordinates
+              final coordinatesRegex = RegExp(r'\[(.*?),(.*?)\]');
+              final routeCoordinates = coordinatesRegex
+                  .allMatches(routeCoordinatesString!)
+                  .map((m) => [
+                        double.parse(m.group(1)!),
+                        double.parse(m.group(2)!),
+                      ])
+                  .toList();
+
+              parsedNextPoints.add({
+                'location': point,
+                'street': street,
+                'duration': duration,
+              });
+              parsedRoutes.add(routeCoordinates);
+            }
+          }
+        }
+
+        // Update the map state
+        setState(() {
+          _saveState(); // Save current state for undo
+
+          if (startingPoint != null) {
+            _isStartingPointChosen = true;
+            _startingLocation = startingPoint;
+            _startingStreet = startingStreet;
+
+            // Add marker for starting point
+            _markers.add(
+              Marker(
+                width: 40,
+                height: 40,
+                point: startingPoint,
+                child: const Icon(
+                  Icons.circle,
+                  color: Colors.red,
+                  size: 10,
+                ),
+              ),
+            );
+          }
+
+          for (int i = 0; i < parsedNextPoints.length; i++) {
+            final nextPoint = parsedNextPoints[i];
+            _nextPoints.add(nextPoint);
+
+            // Add marker for each next point
+            _markers.add(
+              Marker(
+                width: 40,
+                height: 40,
+                point: nextPoint['location'],
+                child: const Icon(
+                  Icons.circle,
+                  color: Colors.red,
+                  size: 10,
+                ),
+              ),
+            );
+
+            // Add route coordinates to the polyline
+            if (i < parsedRoutes.length) {
+              final routeCoordinates = parsedRoutes[i];
+              _routes.add(routeCoordinates);
+              _polylines.add(
+                Polyline(
+                  points:
+                      routeCoordinates.map((c) => LatLng(c[1], c[0])).toList(),
+                  strokeWidth: 4.0,
+                  color: Colors.blue,
+                ),
+              );
+            }
+          }
+        });
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('File imported successfully!')),
+        );
+      } else {
+        print('No file selected');
+      }
+    } catch (e) {
+      print('Error importing file: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Error importing file')),
+      );
     }
   }
 
@@ -1035,8 +1079,7 @@ class _MyHomePageState extends State<MyHomePage> {
                     children: [
                       const SizedBox(width: 10), // Space between buttons
                       ElevatedButton(
-                        onPressed:
-                            _importJsonFile, // ← use the new JSON importer
+                        onPressed: _importFile, // Import functionality
                         child: const Text('Import'),
                       ),
                       const SizedBox(width: 10), // Space between buttons
@@ -1058,7 +1101,7 @@ class _MyHomePageState extends State<MyHomePage> {
                       const SizedBox(width: 10), // Space between buttons
                       ElevatedButton(
                         onPressed: _showExportDialog, // Export functionality
-                        child: const Text('Export JSON'),
+                        child: const Text('Export'),
                       ),
                     ],
                   ),
@@ -1069,6 +1112,198 @@ class _MyHomePageState extends State<MyHomePage> {
                         onPressed: backToStart, // Move to starting point
                         child: const Text('Back To Start'),
                       ),
+                      const SizedBox(width: 10), // Space between buttons
+                      ElevatedButton(
+                        // Copy only lat and long
+                        // onPressed: () async {
+                        //   try {
+                        //     print('Copy button pressed');
+
+                        //     // List to hold structured coordinate data
+                        //     final List<Map<String, double>>
+                        //         formattedCoordinates = [];
+
+                        //     // Extract Route Coordinates from _routes
+                        //     for (final routeCoordinates in _routes) {
+                        //       for (final coordinate in routeCoordinates) {
+                        //         if (coordinate.length == 2) {
+                        //           formattedCoordinates.add({
+                        //             "latitude": coordinate[1],
+                        //             "longitude": coordinate[0],
+                        //           });
+                        //         }
+                        //       }
+                        //     }
+
+                        //     // Extract Route Coordinates from _importedContent
+                        //     final routeRegex = RegExp(
+                        //         r'Route Coordinates:\s*(\[.*?\](?:, \[.*?\])*)');
+                        //     final matches =
+                        //         routeRegex.allMatches(_importedContent);
+                        //     for (final match in matches) {
+                        //       final rawCoordinates = match.group(1);
+                        //       if (rawCoordinates != null) {
+                        //         final coordinateRegex =
+                        //             RegExp(r'\[(.*?),(.*?)\]');
+                        //         for (final coordinateMatch in coordinateRegex
+                        //             .allMatches(rawCoordinates)) {
+                        //           final latitude =
+                        //               double.parse(coordinateMatch.group(2)!);
+                        //           final longitude =
+                        //               double.parse(coordinateMatch.group(1)!);
+                        //           formattedCoordinates.add({
+                        //             "latitude": latitude,
+                        //             "longitude": longitude
+                        //           });
+                        //         }
+                        //       }
+                        //     }
+
+                        //     // Convert the list to JSON
+                        //     final String jsonCoordinates =
+                        //         jsonEncode(formattedCoordinates);
+
+                        //     // Copy to clipboard
+                        //     Clipboard.setData(
+                        //         ClipboardData(text: jsonCoordinates));
+
+                        //     // Show confirmation message
+                        //     ScaffoldMessenger.of(context).showSnackBar(
+                        //       const SnackBar(
+                        //         content: Text(
+                        //             'Route Coordinates copied to clipboard in JSON format!'),
+                        //       ),
+                        //     );
+                        //   } catch (e) {
+                        //     print('Error: $e');
+                        //     ScaffoldMessenger.of(context).showSnackBar(
+                        //       SnackBar(content: Text('Error: ${e.toString()}')),
+                        //     );
+                        //   }
+
+                        // Copy the whole description
+                        // onPressed: () {
+                        //   // Build the content dynamically from the displayed widgets
+                        //   final StringBuffer content = StringBuffer();
+
+                        //   if (_selectedLocation != null) {
+                        //     content.writeln('Selected Location:');
+                        //     content.writeln(
+                        //         'Latitude: ${_selectedLocation!.latitude}, Longitude: ${_selectedLocation!.longitude}');
+                        //     content.writeln(
+                        //         'Street Name: ${_currentStreet ?? "Fetching..."}');
+                        //   } else if (_startingLocation == null) {
+                        //     content.writeln(
+                        //         'Tap on the map to select a location or import data.');
+                        //   }
+
+                        //   if (_isStartingPointChosen &&
+                        //       _startingLocation != null) {
+                        //     content.writeln('Starting Point is chosen:');
+                        //     content.writeln(
+                        //         '$_startingLocation at $_startingStreet');
+                        //   }
+
+                        //   if (_nextPoints.isNotEmpty) {
+                        //     content.writeln('Next Points:');
+                        //     for (int i = 0; i < _nextPoints.length; i++) {
+                        //       final point = _nextPoints[i];
+                        //       final routeCoordinates =
+                        //           i < _routes.length ? _routes[i] : [];
+                        //       content.writeln(
+                        //           'Next Point: ${point['location']} at ${point['street']}');
+                        //       if (routeCoordinates.isNotEmpty) {
+                        //         content.writeln(
+                        //             'Route Coordinates: ${routeCoordinates.map((c) => "[${c[0]}, ${c[1]}]").join(", ")}');
+                        //       }
+                        //     }
+                        //   }
+
+                        //   if (_importedContent.isNotEmpty) {
+                        //     content.writeln('Imported Data:');
+                        //     content.writeln(_importedContent);
+                        //   }
+
+                        //   // Copy the dynamically constructed content to clipboard
+                        //   Clipboard.setData(
+                        //       ClipboardData(text: content.toString()));
+
+                        //   // Show confirmation message
+                        //   ScaffoldMessenger.of(context).showSnackBar(
+                        //     const SnackBar(
+                        //         content: Text(
+                        //             'Displayed content copied to clipboard!')),
+                        //   );
+                        // },
+
+                        // Copy to JSON format
+                        onPressed: () {
+                          try {
+                            print('Copy button pressed');
+
+                            // Construct JSON structure with the new format
+                            List<Map<String, dynamic>> jsonData = [
+                              {
+                                "starting_point": _isStartingPointChosen &&
+                                        _startingLocation != null
+                                    ? {
+                                        "latitude": _startingLocation!.latitude,
+                                        "longitude":
+                                            _startingLocation!.longitude,
+                                        "address": _startingStreet ?? "Unknown"
+                                      }
+                                    : null,
+                                "next_points":
+                                    _nextPoints.asMap().entries.map((entry) {
+                                  int index = entry.key;
+                                  Map<String, dynamic> point = entry.value;
+                                  List<List<double>> routeCoordinates =
+                                      index < _routes.length
+                                          ? _routes[index]
+                                          : [];
+
+                                  return {
+                                    "latitude": point["location"].latitude,
+                                    "longitude": point["location"].longitude,
+                                    "address": point["street"],
+                                    "duration": point.containsKey("duration")
+                                        ? (point["duration"] / 60)
+                                                .toStringAsFixed(1) +
+                                            " minutes"
+                                        : "N/A", // Convert seconds to minutes
+                                    "route_coordinates": routeCoordinates
+                                  };
+                                }).toList()
+                              }
+                            ];
+
+                            // Remove null values from the JSON
+                            jsonData.removeWhere(
+                                (element) => element["starting_point"] == null);
+
+                            // Convert the structured data to a JSON string
+                            final String jsonString = jsonEncode(jsonData);
+
+                            // Copy JSON to clipboard
+                            Clipboard.setData(ClipboardData(text: jsonString));
+
+                            // Show confirmation message
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text(
+                                    'Route data copied to clipboard in JSON format!'),
+                              ),
+                            );
+                          } catch (e) {
+                            print('Error: $e');
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text('Error: ${e.toString()}')),
+                            );
+                          }
+                        },
+
+                        child: const Text('Copy'),
+                      ),
                     ],
                   )
                 ],
@@ -1078,193 +1313,5 @@ class _MyHomePageState extends State<MyHomePage> {
         ],
       ),
     );
-  }
-
-  double _parseDurationToSeconds(dynamic value) {
-    // Accepts "2.3 minutes", "2 minutes", 2.3, 2 (minutes)
-    if (value == null) return 0.0;
-    if (value is num) return value.toDouble() * 60.0; // already minutes
-    if (value is String) {
-      final m = RegExp(r'([0-9]+(?:\.[0-9]+)?)\s*minutes?')
-          .firstMatch(value.toLowerCase());
-      if (m != null) {
-        return double.parse(m.group(1)!) * 60.0;
-      }
-      // If it's a plain number in a string, treat as minutes
-      final n = double.tryParse(value);
-      if (n != null) return n * 60.0;
-    }
-    return 0.0;
-  }
-
-  double _asDouble(dynamic v) {
-    if (v is num) return v.toDouble();
-    if (v is String) return double.parse(v);
-    throw ArgumentError('Expected number, got $v');
-  }
-
-  Future<void> _importJsonFile() async {
-    try {
-      final result = await FilePicker.platform.pickFiles(
-        type: FileType.custom,
-        allowedExtensions: ['json'],
-      );
-      if (result == null) {
-        print('No file selected');
-        return;
-      }
-
-      final filePath = result.files.single.path!;
-      final file = File(filePath);
-      final raw = await file.readAsString();
-
-      // Keep a visible copy for the UI panel
-      setState(() => _importedContent = raw);
-
-      final decoded = jsonDecode(raw);
-      if (decoded is! List || decoded.isEmpty) {
-        throw FormatException('Top-level JSON must be a non-empty array.');
-      }
-      final root = decoded.first; // we use the first route object
-      if (root is! Map) throw FormatException('Array item must be an object.');
-
-      final sp = root['starting_point'];
-      final nps = root['next_points'];
-      if (sp == null || nps == null) {
-        throw FormatException('Missing "starting_point" or "next_points".');
-      }
-
-      // Clear current state before loading
-      _polylines.clear();
-      _routes.clear();
-      _markers.clear();
-      _nextPoints.clear();
-
-      // Starting point
-      final sLat = _asDouble(sp['latitude']);
-      final sLon = _asDouble(sp['longitude']);
-      final sAddr = (sp['address'] ?? 'Unknown').toString();
-      final startLL = LatLng(sLat, sLon);
-
-      setState(() {
-        _isStartingPointChosen = true;
-        _startingLocation = startLL;
-        _startingStreet = sAddr;
-        _markers.add(Marker(
-          width: 40,
-          height: 40,
-          point: startLL,
-          child: const Icon(Icons.circle, color: Colors.red, size: 10),
-        ));
-      });
-
-      if (nps is! List || nps.isEmpty) {
-        // No next points; center map and finish
-        _mapController.move(startLL, 16);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-              content: Text('Imported starting point (no next points).')),
-        );
-        return;
-      }
-
-      // Build points, routes, markers, polylines
-      final List<List<List<double>>> importedRoutes = [];
-      final List<Map<String, dynamic>> importedNextPoints = [];
-
-      for (var i = 0; i < nps.length; i++) {
-        final np = nps[i] as Map;
-        final pLat = _asDouble(np['latitude']);
-        final pLon = _asDouble(np['longitude']);
-        final pAddr = (np['address'] ?? 'Unknown Street').toString();
-        final pDurSecs = _parseDurationToSeconds(np['duration']);
-
-        // Build a *new* map (don’t reuse the decoded JSON map)
-        importedNextPoints.add({
-          'location': LatLng(pLat, pLon),
-          'street': pAddr,
-          'duration': pDurSecs, // store in seconds (your UI divides by 60)
-        });
-
-        // route_coordinates are [lon, lat] pairs
-        final rawCoords = (np['route_coordinates'] as List?) ?? const [];
-        final coords = <List<double>>[];
-        for (final c in rawCoords) {
-          if (c is List && c.length == 2) {
-            final lon = _asDouble(c[0]);
-            final lat = _asDouble(c[1]);
-            coords.add([lon, lat]);
-          }
-        }
-
-        // Ensure the first segment begins at starting point
-        if (i == 0) {
-          if (coords.isEmpty ||
-              coords.first[0] != sLon ||
-              coords.first[1] != sLat) {
-            coords.insert(0, [sLon, sLat]);
-          }
-        } else {
-          // For later segments, ensure it starts at the previous next_point
-          final prev = importedNextPoints[i - 1]['location'] as LatLng;
-          if (coords.isEmpty ||
-              coords.first[0] != prev.longitude ||
-              coords.first[1] != prev.latitude) {
-            coords.insert(0, [prev.longitude, prev.latitude]);
-          }
-        }
-
-        // Ensure each segment ends at its point
-        if (coords.isEmpty ||
-            coords.last[0] != pLon ||
-            coords.last[1] != pLat) {
-          coords.add([pLon, pLat]);
-        }
-
-        importedRoutes.add(coords);
-      }
-
-      // Apply everything to UI
-      setState(() {
-        _nextPoints.addAll(importedNextPoints);
-        _routes.addAll(importedRoutes);
-
-        // Add markers for each next point
-        for (final np in importedNextPoints) {
-          final LatLng ll = np['location'];
-          _markers.add(Marker(
-            width: 40,
-            height: 40,
-            point: ll,
-            child: const Icon(Icons.circle, color: Colors.red, size: 10),
-          ));
-        }
-
-        // Build polylines
-        for (final route in importedRoutes) {
-          _polylines.add(
-            Polyline(
-              points: route.map((c) => LatLng(c[1], c[0])).toList(),
-              strokeWidth: 4.0,
-              color: Colors.blue,
-            ),
-          );
-        }
-      });
-
-      // Center/zoom
-      _mapController.move(startLL, 14);
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-            content: Text(
-                'Imported ${importedNextPoints.length} segment(s) from JSON.')),
-      );
-    } catch (e) {
-      print('Error importing JSON: $e');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error importing JSON: $e')),
-      );
-    }
   }
 }
