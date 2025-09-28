@@ -278,6 +278,98 @@ class _MyHomePageState extends State<MyHomePage> {
     }
   }
 
+  String _buildRouteJsonString() {
+    // Same structure as your existing "Copy" button
+    List<Map<String, dynamic>> jsonData = [
+      {
+        "starting_point": _isStartingPointChosen && _startingLocation != null
+            ? {
+                "latitude": _startingLocation!.latitude,
+                "longitude": _startingLocation!.longitude,
+                "address": _startingStreet ?? "Unknown",
+              }
+            : null,
+        "next_points": _nextPoints.asMap().entries.map((entry) {
+          int index = entry.key;
+          Map<String, dynamic> point = entry.value;
+          List<List<double>> routeCoordinates =
+              index < _routes.length ? _routes[index] : [];
+
+          return {
+            "latitude": point["location"].latitude,
+            "longitude": point["location"].longitude,
+            "address": point["street"],
+            "duration": point.containsKey("duration")
+                ? "${(point["duration"] / 60).toStringAsFixed(1)} minutes"
+                : "N/A",
+            "route_coordinates": routeCoordinates,
+          };
+        }).toList(),
+      }
+    ];
+
+    // Keep behavior identical to your old copy handler
+    jsonData.removeWhere((element) => element["starting_point"] == null);
+
+    return jsonEncode(jsonData);
+  }
+
+  Future<void> _exportJsonFile(String fileName) async {
+    try {
+      final directory = Directory('/storage/emulated/0/Documents');
+      if (!await directory.exists()) {
+        await directory.create(recursive: true);
+      }
+
+      final file = File('${directory.path}/$fileName');
+      final jsonString = _buildRouteJsonString();
+      await file.writeAsString(jsonString);
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('JSON exported to ${file.path}')),
+      );
+    } catch (e) {
+      print('Error exporting JSON: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Error exporting JSON file')),
+      );
+    }
+  }
+
+  void _showExportJsonDialog() {
+    final TextEditingController fileNameController =
+        TextEditingController(text: 'route.json');
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Export JSON'),
+          content: TextField(
+            controller: fileNameController,
+            decoration: const InputDecoration(labelText: 'File Name'),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () {
+                final fileName = fileNameController.text.isNotEmpty
+                    ? fileNameController.text
+                    : 'route.json';
+                Navigator.of(context).pop();
+                _exportJsonFile(fileName);
+              },
+              child: const Text('OK'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   Future<void> _fetchStreetName(LatLng point) async {
     const apiKey = '5b3ce3597851110001cf624804ab2baa18644cc6b65c5829826b6117';
     final url =
@@ -1100,8 +1192,8 @@ class _MyHomePageState extends State<MyHomePage> {
 
                       const SizedBox(width: 10), // Space between buttons
                       ElevatedButton(
-                        onPressed: _showExportDialog, // Export functionality
-                        child: const Text('Export'),
+                        onPressed: _showExportDialog,
+                        child: const Text('Export txt'),
                       ),
                     ],
                   ),
@@ -1114,195 +1206,9 @@ class _MyHomePageState extends State<MyHomePage> {
                       ),
                       const SizedBox(width: 10), // Space between buttons
                       ElevatedButton(
-                        // Copy only lat and long
-                        // onPressed: () async {
-                        //   try {
-                        //     print('Copy button pressed');
-
-                        //     // List to hold structured coordinate data
-                        //     final List<Map<String, double>>
-                        //         formattedCoordinates = [];
-
-                        //     // Extract Route Coordinates from _routes
-                        //     for (final routeCoordinates in _routes) {
-                        //       for (final coordinate in routeCoordinates) {
-                        //         if (coordinate.length == 2) {
-                        //           formattedCoordinates.add({
-                        //             "latitude": coordinate[1],
-                        //             "longitude": coordinate[0],
-                        //           });
-                        //         }
-                        //       }
-                        //     }
-
-                        //     // Extract Route Coordinates from _importedContent
-                        //     final routeRegex = RegExp(
-                        //         r'Route Coordinates:\s*(\[.*?\](?:, \[.*?\])*)');
-                        //     final matches =
-                        //         routeRegex.allMatches(_importedContent);
-                        //     for (final match in matches) {
-                        //       final rawCoordinates = match.group(1);
-                        //       if (rawCoordinates != null) {
-                        //         final coordinateRegex =
-                        //             RegExp(r'\[(.*?),(.*?)\]');
-                        //         for (final coordinateMatch in coordinateRegex
-                        //             .allMatches(rawCoordinates)) {
-                        //           final latitude =
-                        //               double.parse(coordinateMatch.group(2)!);
-                        //           final longitude =
-                        //               double.parse(coordinateMatch.group(1)!);
-                        //           formattedCoordinates.add({
-                        //             "latitude": latitude,
-                        //             "longitude": longitude
-                        //           });
-                        //         }
-                        //       }
-                        //     }
-
-                        //     // Convert the list to JSON
-                        //     final String jsonCoordinates =
-                        //         jsonEncode(formattedCoordinates);
-
-                        //     // Copy to clipboard
-                        //     Clipboard.setData(
-                        //         ClipboardData(text: jsonCoordinates));
-
-                        //     // Show confirmation message
-                        //     ScaffoldMessenger.of(context).showSnackBar(
-                        //       const SnackBar(
-                        //         content: Text(
-                        //             'Route Coordinates copied to clipboard in JSON format!'),
-                        //       ),
-                        //     );
-                        //   } catch (e) {
-                        //     print('Error: $e');
-                        //     ScaffoldMessenger.of(context).showSnackBar(
-                        //       SnackBar(content: Text('Error: ${e.toString()}')),
-                        //     );
-                        //   }
-
-                        // Copy the whole description
-                        // onPressed: () {
-                        //   // Build the content dynamically from the displayed widgets
-                        //   final StringBuffer content = StringBuffer();
-
-                        //   if (_selectedLocation != null) {
-                        //     content.writeln('Selected Location:');
-                        //     content.writeln(
-                        //         'Latitude: ${_selectedLocation!.latitude}, Longitude: ${_selectedLocation!.longitude}');
-                        //     content.writeln(
-                        //         'Street Name: ${_currentStreet ?? "Fetching..."}');
-                        //   } else if (_startingLocation == null) {
-                        //     content.writeln(
-                        //         'Tap on the map to select a location or import data.');
-                        //   }
-
-                        //   if (_isStartingPointChosen &&
-                        //       _startingLocation != null) {
-                        //     content.writeln('Starting Point is chosen:');
-                        //     content.writeln(
-                        //         '$_startingLocation at $_startingStreet');
-                        //   }
-
-                        //   if (_nextPoints.isNotEmpty) {
-                        //     content.writeln('Next Points:');
-                        //     for (int i = 0; i < _nextPoints.length; i++) {
-                        //       final point = _nextPoints[i];
-                        //       final routeCoordinates =
-                        //           i < _routes.length ? _routes[i] : [];
-                        //       content.writeln(
-                        //           'Next Point: ${point['location']} at ${point['street']}');
-                        //       if (routeCoordinates.isNotEmpty) {
-                        //         content.writeln(
-                        //             'Route Coordinates: ${routeCoordinates.map((c) => "[${c[0]}, ${c[1]}]").join(", ")}');
-                        //       }
-                        //     }
-                        //   }
-
-                        //   if (_importedContent.isNotEmpty) {
-                        //     content.writeln('Imported Data:');
-                        //     content.writeln(_importedContent);
-                        //   }
-
-                        //   // Copy the dynamically constructed content to clipboard
-                        //   Clipboard.setData(
-                        //       ClipboardData(text: content.toString()));
-
-                        //   // Show confirmation message
-                        //   ScaffoldMessenger.of(context).showSnackBar(
-                        //     const SnackBar(
-                        //         content: Text(
-                        //             'Displayed content copied to clipboard!')),
-                        //   );
-                        // },
-
-                        // Copy to JSON format
-                        onPressed: () {
-                          try {
-                            print('Copy button pressed');
-
-                            // Construct JSON structure with the new format
-                            List<Map<String, dynamic>> jsonData = [
-                              {
-                                "starting_point": _isStartingPointChosen &&
-                                        _startingLocation != null
-                                    ? {
-                                        "latitude": _startingLocation!.latitude,
-                                        "longitude":
-                                            _startingLocation!.longitude,
-                                        "address": _startingStreet ?? "Unknown"
-                                      }
-                                    : null,
-                                "next_points":
-                                    _nextPoints.asMap().entries.map((entry) {
-                                  int index = entry.key;
-                                  Map<String, dynamic> point = entry.value;
-                                  List<List<double>> routeCoordinates =
-                                      index < _routes.length
-                                          ? _routes[index]
-                                          : [];
-
-                                  return {
-                                    "latitude": point["location"].latitude,
-                                    "longitude": point["location"].longitude,
-                                    "address": point["street"],
-                                    "duration": point.containsKey("duration")
-                                        ? (point["duration"] / 60)
-                                                .toStringAsFixed(1) +
-                                            " minutes"
-                                        : "N/A", // Convert seconds to minutes
-                                    "route_coordinates": routeCoordinates
-                                  };
-                                }).toList()
-                              }
-                            ];
-
-                            // Remove null values from the JSON
-                            jsonData.removeWhere(
-                                (element) => element["starting_point"] == null);
-
-                            // Convert the structured data to a JSON string
-                            final String jsonString = jsonEncode(jsonData);
-
-                            // Copy JSON to clipboard
-                            Clipboard.setData(ClipboardData(text: jsonString));
-
-                            // Show confirmation message
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text(
-                                    'Route data copied to clipboard in JSON format!'),
-                              ),
-                            );
-                          } catch (e) {
-                            print('Error: $e');
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(content: Text('Error: ${e.toString()}')),
-                            );
-                          }
-                        },
-
-                        child: const Text('Copy'),
+                        onPressed:
+                            _showExportJsonDialog, // now exports JSON to a file
+                        child: const Text('Export JSON'),
                       ),
                     ],
                   )
