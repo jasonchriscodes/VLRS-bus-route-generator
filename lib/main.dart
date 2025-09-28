@@ -483,39 +483,28 @@ class _MyHomePageState extends State<MyHomePage> {
 
   Future<void> _fetchSuggestions(String query) async {
     if (query.isEmpty) {
-      setState(() {
-        _suggestions = [];
-      });
+      setState(() => _suggestions = []);
       return;
     }
 
-    // Check if the query matches a latitude, longitude pattern
-    final coordinateRegex = RegExp(r'^(-?\d+(\.\d+)?),\s*(-?\d+(\.\d+)?)$');
-    if (coordinateRegex.hasMatch(query)) {
-      final match = coordinateRegex.firstMatch(query)!;
-      final double lat = double.parse(match.group(1)!);
-      final double lon = double.parse(match.group(3)!);
-
-      // Move the map to the entered coordinates
-      final LatLng location = LatLng(lat, lon);
+    // If it's lat,lon, just pan the map & clear suggestions (don’t change the text)
+    if (_isLatLonText(query)) {
+      final loc = _parseLatLon(query)!;
       setState(() {
-        _selectedLocation = location;
-        _searchController.text = 'Lat: $lat, Lon: $lon';
+        _selectedLocation = loc;
         _suggestions = [];
       });
-
-      _mapController.move(_selectedLocation!, 16); // Zoom level 16
-      return; // No need to continue with API suggestions
+      _mapController.move(loc, 16);
+      return;
     }
 
-    // Existing suggestion logic using TomTom API
+    // ... keep your TomTom logic below unchanged
     const String apiKey = '7Lz8icqmjz4UvEALltZQALkwdQrVo2TO';
     final String url =
         'https://api.tomtom.com/search/2/search/$query.json?key=$apiKey&limit=5';
 
     try {
       final response = await http.get(Uri.parse(url));
-
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         setState(() {
@@ -530,16 +519,12 @@ class _MyHomePageState extends State<MyHomePage> {
               .toList();
         });
       } else {
-        setState(() {
-          _suggestions = [];
-        });
-        print('Error fetching suggestions: ${response.statusCode}');
+        setState(() => _suggestions = []);
+        debugPrint('Error fetching suggestions: ${response.statusCode}');
       }
     } catch (e) {
-      setState(() {
-        _suggestions = [];
-      });
-      print('Error fetching suggestions: $e');
+      setState(() => _suggestions = []);
+      debugPrint('Error fetching suggestions: $e');
     }
   }
 
@@ -948,10 +933,7 @@ class _MyHomePageState extends State<MyHomePage> {
                 Row(
                   children: [
                     ElevatedButton(
-                      onPressed: () {
-                        _choosePoint();
-                        _addRouteCoordinates();
-                      },
+                      onPressed: _handleChooseTapped,
                       child: Text(_isStartingPointChosen
                           ? 'Choose Next Point'
                           : 'Choose Starting Point'),
@@ -1219,5 +1201,169 @@ class _MyHomePageState extends State<MyHomePage> {
         ],
       ),
     );
+  }
+
+  bool _isLatLonText(String s) {
+    final coordinateRegex =
+        RegExp(r'^\s*(-?\d+(\.\d+)?)\s*,\s*(-?\d+(\.\d+)?)\s*$');
+    return coordinateRegex.hasMatch(s);
+  }
+
+  LatLng? _parseLatLon(String s) {
+    final m =
+        RegExp(r'^\s*(-?\d+(\.\d+)?)\s*,\s*(-?\d+(\.\d+)?)\s*$').firstMatch(s);
+    if (m == null) return null;
+    final lat = double.parse(m.group(1)!);
+    final lon = double.parse(m.group(3)!);
+    return LatLng(lat, lon);
+  }
+
+// Normalizes "street" + "housenumber" (avoids "N/A Unknown Street")
+  String _formatStreetLabel({String? street, String? housenumber}) {
+    final s = (street ?? '').trim();
+    final h = (housenumber ?? '').trim();
+    if (s.isEmpty) return 'Unknown Street';
+    if (h.isEmpty || h.toUpperCase() == 'N/A') return s;
+    return '$h $s';
+  }
+
+// Ask for latitude & longitude when user typed a name without picking a suggestion
+  Future<LatLng?> _promptForLatLon({required String title}) async {
+    final latCtl = TextEditingController();
+    final lonCtl = TextEditingController();
+
+    return showDialog<LatLng?>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(title),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: latCtl,
+              keyboardType:
+                  TextInputType.numberWithOptions(decimal: true, signed: true),
+              decoration:
+                  const InputDecoration(labelText: 'Latitude (e.g. -36.78008)'),
+            ),
+            TextField(
+              controller: lonCtl,
+              keyboardType:
+                  TextInputType.numberWithOptions(decimal: true, signed: true),
+              decoration: const InputDecoration(
+                  labelText: 'Longitude (e.g. 174.99199)'),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, null),
+              child: const Text('Cancel')),
+          TextButton(
+            onPressed: () {
+              try {
+                final lat = double.parse(latCtl.text.trim());
+                final lon = double.parse(lonCtl.text.trim());
+                Navigator.pop(ctx, LatLng(lat, lon));
+              } catch (_) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                      content: Text('Please enter valid numbers for lat/lon')),
+                );
+              }
+            },
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
+  }
+
+// Ask for a street/place name when user typed lat,lon without a suggestion
+  Future<String?> _promptForStreetName(
+      {required String title, String? prefill}) async {
+    final nameCtl = TextEditingController(text: prefill ?? '');
+    return showDialog<String?>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(title),
+        content: TextField(
+          controller: nameCtl,
+          decoration: const InputDecoration(labelText: 'Street / Place name'),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, null),
+              child: const Text('Cancel')),
+          TextButton(
+            onPressed: () => Navigator.pop(
+                ctx, nameCtl.text.trim().isEmpty ? null : nameCtl.text.trim()),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
+  }
+
+// Drives the "smart choose" flow before committing the point
+  Future<bool> _ensureSelectedLocationAndStreetFromInput() async {
+    final input = _searchController.text.trim();
+
+    // If user already tapped the map or picked a suggestion, we’re good.
+    if (_selectedLocation != null &&
+        (_currentStreet != null && _currentStreet!.isNotEmpty)) {
+      return true;
+    }
+
+    // Case A: user typed lat,lon directly
+    if (_isLatLonText(input)) {
+      final coords = _parseLatLon(input)!;
+
+      // Ask for a street/place name
+      final name = await _promptForStreetName(
+        title: 'Enter Street / Place Name',
+      );
+      if (name == null) return false;
+
+      setState(() {
+        _selectedLocation = coords;
+        _currentStreet = name; // user-provided
+        _mapController.move(coords, 16);
+      });
+      return true;
+    }
+
+    // Case B: user typed a free-text name (no suggestion selected)
+    if (input.isNotEmpty) {
+      // Ask for lat/lon
+      final coords = await _promptForLatLon(
+        title: 'Enter Latitude & Longitude for "$input"',
+      );
+      if (coords == null) return false;
+
+      setState(() {
+        _selectedLocation = coords;
+        _currentStreet = input; // treat typed name as label/street
+        _mapController.move(coords, 16);
+      });
+      return true;
+    }
+
+    // Nothing to use
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+          content: Text('Please type a name OR "lat,lon", or tap the map.')),
+    );
+    return false;
+  }
+
+  Future<void> _handleChooseTapped() async {
+    // Ensure we have a selected point & street even if the user typed only text/coords
+    final ok = await _ensureSelectedLocationAndStreetFromInput();
+    if (!ok) return;
+
+    // Now commit like usual
+    _choosePoint();
+    _addRouteCoordinates();
   }
 }
