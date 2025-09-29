@@ -379,22 +379,21 @@ class _MyHomePageState extends State<MyHomePage> {
       final response = await http.get(Uri.parse(url));
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        setState(() {
-          _currentStreet =
-              data['features'][0]['properties']['street'] ?? 'Unknown Street';
-          final streetNo =
-              data['features'][0]['properties']['housenumber'] ?? 'N/A';
-          _currentStreet = '$streetNo $_currentStreet';
-        });
+        final features = (data['features'] as List?) ?? const [];
+        final props = features.isNotEmpty
+            ? (features[0]['properties'] as Map<String, dynamic>?)
+            : null;
+
+        final street = props?['street']?.toString();
+        final hn = props?['housenumber']?.toString();
+        final label = _formatStreetLabel(street: street, housenumber: hn);
+
+        setState(() => _currentStreet = label);
       } else {
-        throw Exception(
-            'Failed to fetch street name. HTTP Status: ${response.statusCode}');
+        setState(() => _currentStreet = 'Unknown Street');
       }
     } catch (e) {
-      setState(() {
-        _currentStreet = 'Error fetching street name';
-      });
-      print('Error fetching street name: $e');
+      setState(() => _currentStreet = 'Unknown Street');
     }
   }
 
@@ -519,32 +518,42 @@ class _MyHomePageState extends State<MyHomePage> {
               .toList();
         });
       } else {
-        setState(() => _suggestions = []);
-        debugPrint('Error fetching suggestions: ${response.statusCode}');
+        setState(() {
+          _suggestions = [];
+          if (!_isLatLonText(query)) {
+            _selectedLocation = null; // avoid reusing old selection
+            _currentStreet = null;
+          }
+        });
       }
     } catch (e) {
-      setState(() => _suggestions = []);
-      debugPrint('Error fetching suggestions: $e');
+      setState(() {
+        _suggestions = [];
+        if (!_isLatLonText(query)) {
+          _selectedLocation = null;
+          _currentStreet = null;
+        }
+      });
     }
   }
 
   void _selectSuggestion(Map<String, dynamic> suggestion) async {
-    final List coordinates = suggestion['coordinates'];
-    final double lon = coordinates[0];
-    final double lat = coordinates[1];
+    final List coords = suggestion['coordinates'];
+    final double lon = coords[0];
+    final double lat = coords[1];
     final LatLng location = LatLng(lat, lon);
 
     setState(() {
       _selectedLocation = location;
       _searchController.text = suggestion['label'];
+      _currentStreet = suggestion['label']; // optimistic label
       _suggestions = [];
     });
 
-    // Fetch the street name and number for the selected location
+    // refine with reverse geocode (will keep nice format / house number)
     await _fetchStreetName(location);
 
-    // Move the map to the selected location and zoom in
-    _mapController.move(_selectedLocation!, 16); // Zoom level 16
+    _mapController.move(_selectedLocation!, 16);
   }
 
   void _choosePoint() {
@@ -563,62 +572,65 @@ class _MyHomePageState extends State<MyHomePage> {
             width: 40,
             height: 40,
             point: _startingLocation!,
-            child: const Icon(
-              Icons.circle,
-              color: Colors.red,
-              size: 10,
-            ),
+            child: const Icon(Icons.circle, color: Colors.red, size: 10),
           ));
+
+          // 🔑 Reset transient selection so the next click uses *new* input/map tap
+          _selectedLocation = null;
+          _currentStreet = null;
+          _suggestions = [];
+          _searchController.clear();
         } else {
-          // Add the next point
-          _nextPoints.add({
-            'location': _selectedLocation!,
-            'street': _currentStreet ?? 'Unknown Street',
+          // snapshot current selection so we don't lose it when we clear later
+          final LatLng chosen = _selectedLocation!;
+          final String street = _currentStreet ?? 'Unknown Street';
+
+          setState(() {
+            _saveState();
+
+            // 1) commit next point
+            _nextPoints.add({'location': chosen, 'street': street});
+
+            // 2) marker
+            _markers.add(Marker(
+              width: 40,
+              height: 40,
+              point: chosen,
+              child: const Icon(Icons.circle, color: Colors.red, size: 10),
+            ));
           });
 
-          // Add marker for the next point
-          _markers.add(Marker(
-            width: 40,
-            height: 40,
-            point: _selectedLocation!,
-            child: const Icon(
-              Icons.circle,
-              color: Colors.red,
-              size: 10,
-            ),
-          ));
+          // 3) compute start/end using committed state (not _selectedLocation)
+          final int n = _nextPoints.length;
+          final LatLng start =
+              (n == 1) ? _startingLocation! : _nextPoints[n - 2]['location'];
+          final LatLng end = _nextPoints[n - 1]['location'];
 
-          // Fetch route coordinates and update the polyline
-          if (_nextPoints.isNotEmpty) {
-            LatLng start = _nextPoints.length == 1
-                ? _startingLocation!
-                : _nextPoints[_nextPoints.length - 2]['location'];
-            LatLng end = _nextPoints.last['location'];
+          // 4) fetch route and update UI
+          _fetchRouteCoordinatesWithDuration(start, end).then((result) {
+            final coordinates = result['coordinates'];
+            final duration = result['duration'];
 
-            _fetchRouteCoordinatesWithDuration(start, end).then((result) {
-              final coordinates = result['coordinates'];
-              final duration = result['duration'];
+            if (coordinates.isNotEmpty) {
+              setState(() {
+                _routes.add(coordinates);
+                _polylines.add(Polyline(
+                  points: coordinates.map((c) => LatLng(c[1], c[0])).toList(),
+                  strokeWidth: 4.0,
+                  color: Colors.blue,
+                ));
+                _nextPoints.last['duration'] = duration;
+              });
+            }
+          });
 
-              if (coordinates.isNotEmpty) {
-                setState(() {
-                  _routes.add(coordinates);
-                  _polylines.add(
-                    Polyline(
-                      points:
-                          coordinates.map((c) => LatLng(c[1], c[0])).toList(),
-                      strokeWidth: 4.0,
-                      color: Colors.blue,
-                    ),
-                  );
-
-                  // Update the duration for the respective point
-                  if (_nextPoints.isNotEmpty) {
-                    _nextPoints.last['duration'] = duration;
-                  }
-                });
-              }
-            });
-          }
+          // 5) 🔑 clear transient selection so the next add starts fresh
+          setState(() {
+            _selectedLocation = null;
+            _currentStreet = null;
+            _searchController.clear();
+            _suggestions = [];
+          });
         }
       });
 
@@ -1305,64 +1317,89 @@ class _MyHomePageState extends State<MyHomePage> {
     );
   }
 
-// Drives the "smart choose" flow before committing the point
   Future<bool> _ensureSelectedLocationAndStreetFromInput() async {
     final input = _searchController.text.trim();
 
-    // If user already tapped the map or picked a suggestion, we’re good.
+// If selection equals the last committed point and the user typed a new name (not lat,lon),
+// treat as no selection so we prompt for lat/lon (or street) properly.
     if (_selectedLocation != null &&
-        (_currentStreet != null && _currentStreet!.isNotEmpty)) {
+        input.isNotEmpty &&
+        !_isLatLonText(input)) {
+      final LatLng? lastCommitted = _nextPoints.isNotEmpty
+          ? _nextPoints.last['location'] as LatLng
+          : _startingLocation;
+      if (lastCommitted != null && _selectedLocation == lastCommitted) {
+        setState(() {
+          _selectedLocation = null;
+          _currentStreet = null;
+        });
+      }
+    }
+
+    // If user tapped the map / chose a suggestion but street is still empty/unknown,
+    // ask for a street/place to avoid writing "Unknown Street".
+    bool _needsStreetPrompt(String? s) {
+      if (s == null) return true;
+      final v = s.trim().toLowerCase();
+      return v.isEmpty ||
+          v == 'unknown street' ||
+          v.startsWith('error fetching') ||
+          v.startsWith('fetching...');
+    }
+
+    // Case 0: already have coordinates (map tap or suggestion)
+    if (_selectedLocation != null) {
+      if (_needsStreetPrompt(_currentStreet)) {
+        final name =
+            await _promptForStreetName(title: 'Enter Street / Place Name');
+        if (name == null) return false;
+        setState(() => _currentStreet = name);
+      }
       return true;
     }
 
-    // Case A: user typed lat,lon directly
+    // Case A: user typed lat,lon
     if (_isLatLonText(input)) {
       final coords = _parseLatLon(input)!;
-
-      // Ask for a street/place name
-      final name = await _promptForStreetName(
-        title: 'Enter Street / Place Name',
-      );
+      final name =
+          await _promptForStreetName(title: 'Enter Street / Place Name');
       if (name == null) return false;
 
       setState(() {
         _selectedLocation = coords;
-        _currentStreet = name; // user-provided
+        _currentStreet = name;
         _mapController.move(coords, 16);
       });
       return true;
     }
 
-    // Case B: user typed a free-text name (no suggestion selected)
+    // Case B: user typed a name (no suggestion selected)
     if (input.isNotEmpty) {
-      // Ask for lat/lon
       final coords = await _promptForLatLon(
-        title: 'Enter Latitude & Longitude for "$input"',
-      );
+          title: 'Enter Latitude & Longitude for "$input"');
       if (coords == null) return false;
 
       setState(() {
         _selectedLocation = coords;
-        _currentStreet = input; // treat typed name as label/street
+        _currentStreet = input; // use typed name as label
         _mapController.move(coords, 16);
       });
       return true;
     }
 
-    // Nothing to use
+    // Nothing usable
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
-          content: Text('Please type a name OR "lat,lon", or tap the map.')),
+          content: Text(
+              'Type a name or "lat,lon", pick a suggestion, or tap the map.')),
     );
     return false;
   }
 
   Future<void> _handleChooseTapped() async {
-    // Ensure we have a selected point & street even if the user typed only text/coords
     final ok = await _ensureSelectedLocationAndStreetFromInput();
     if (!ok) return;
 
-    // Now commit like usual
     _choosePoint();
     _addRouteCoordinates();
   }
