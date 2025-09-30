@@ -12,6 +12,8 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:open_file/open_file.dart';
 import 'dart:collection';
 
+bool _isRouting = false;
+
 String _importedContent = '';
 List<Polyline> _polylines = [];
 
@@ -54,6 +56,13 @@ class _MyHomePageState extends State<MyHomePage> {
   List<List<List<double>>> _routes = []; // Store route coordinates
   List<Map<String, dynamic>> _suggestions = [];
   final TextEditingController _searchController = TextEditingController();
+  // Cache: start|end -> {'coordinates': List<List<double>>, 'duration': num}
+  final Map<String, Map<String, dynamic>> _routeCache = {};
+
+  String _segKey(LatLng a, LatLng b) =>
+      '${a.latitude},${a.longitude}|${b.latitude},${b.longitude}';
+
+  T _pick<T>(T a, T b) => a; // tiny helper if you need tuple-like selects later
 
   // Add a stack to store the history of states
   final List<Map<String, dynamic>> _stateHistory = [];
@@ -148,7 +157,7 @@ class _MyHomePageState extends State<MyHomePage> {
     for (int i = 0; i < _nextPoints.length; i++) {
       final point = _nextPoints[i];
       final routeCoordinates =
-          i < _routes.length ? List<List<double>>.from(_routes[i]) : [];
+          i < _routes.length ? _toDoublePairList(_routes[i]) : <List<double>>[];
 
       // Add starting point to the first route segment
       if (i == 0 && _isStartingPointChosen && _startingLocation != null) {
@@ -260,20 +269,26 @@ class _MyHomePageState extends State<MyHomePage> {
 
   Future<void> _exportRouteFile(String fileName) async {
     try {
-      final directory = Directory('/storage/emulated/0/Documents');
-      if (!await directory.exists()) {
-        await directory.create(recursive: true);
-      }
-
+      final directory = await _safeExportDir();
       final file = File('${directory.path}/$fileName');
-      await file.writeAsString(_generateRouteFileContent());
+      final content = _generateRouteFileContent();
+
+      await _atomicReplaceWrite(file, content);
+
+      if (!mounted) return;
+      setState(() {
+        _importedContent = content; // reflect what was saved
+      });
+
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('File exported to ${file.path}')),
       );
-    } catch (e) {
-      print('Error exporting file: $e');
+      print('TXT exported to: ${file.path}');
+    } catch (e, st) {
+      print('Error exporting TXT: $e\n$st');
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Error exporting file')),
+        SnackBar(content: Text('Error exporting file: $e')),
       );
     }
   }
@@ -292,8 +307,9 @@ class _MyHomePageState extends State<MyHomePage> {
         "next_points": _nextPoints.asMap().entries.map((entry) {
           int index = entry.key;
           Map<String, dynamic> point = entry.value;
-          List<List<double>> routeCoordinates =
-              index < _routes.length ? _routes[index] : [];
+          List<List<double>> routeCoordinates = index < _routes.length
+              ? _toDoublePairList(_routes[index])
+              : <List<double>>[];
 
           return {
             "latitude": point["location"].latitude,
@@ -316,22 +332,21 @@ class _MyHomePageState extends State<MyHomePage> {
 
   Future<void> _exportJsonFile(String fileName) async {
     try {
-      final directory = Directory('/storage/emulated/0/Documents');
-      if (!await directory.exists()) {
-        await directory.create(recursive: true);
-      }
-
+      final directory = await _safeExportDir();
       final file = File('${directory.path}/$fileName');
       final jsonString = _buildRouteJsonString();
-      await file.writeAsString(jsonString);
 
+      await _atomicReplaceWrite(file, jsonString);
+
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('JSON exported to ${file.path}')),
       );
-    } catch (e) {
-      print('Error exporting JSON: $e');
+    } catch (e, st) {
+      print('Error exporting JSON: $e\n$st');
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Error exporting JSON file')),
+        SnackBar(content: Text('Error exporting JSON file: $e')),
       );
     }
   }
@@ -398,86 +413,123 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 
   Future<Map<String, dynamic>> _fetchRouteCoordinatesWithDuration(
-      LatLng start, LatLng end) async {
-    final url =
-        // 'http://43.226.218.99:8080/ors/v2/directions/driving-car?start=${start.longitude},${start.latitude}&end=${end.longitude},${end.latitude}&format=geojson';
+    LatLng start,
+    LatLng end, {
+    int retries = 2,
+  }) async {
+    final url = 'https://api.openrouteservice.org/v2/directions/driving-car'
+        '?api_key=5b3ce3597851110001cf624804ab2baa18644cc6b65c5829826b6117'
+        '&start=${start.longitude},${start.latitude}'
+        '&end=${end.longitude},${end.latitude}'
+        '&format=geojson';
 
-        'https://api.openrouteservice.org/v2/directions/driving-car?api_key=5b3ce3597851110001cf624804ab2baa18644cc6b65c5829826b6117&start=${start.longitude},${start.latitude}&end=${end.longitude},${end.latitude}&format=geojson';
+    int attempt = 0;
+    while (true) {
+      attempt++;
+      try {
+        final resp = await http
+            .get(Uri.parse(url))
+            .timeout(const Duration(seconds: 15)); // ⏱️ timeout
 
-    try {
-      final response = await http.get(Uri.parse(url));
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        if (data['features'] == null || data['features'].isEmpty) {
-          throw Exception('No route data available.');
+        if (resp.statusCode == 200) {
+          final data = jsonDecode(resp.body);
+          final feats = (data['features'] as List?) ?? const [];
+          if (feats.isEmpty) throw Exception('No features in response');
+
+          final coords = (feats[0]['geometry']['coordinates'] as List)
+              .map<List<double>>((c) => [c[0] as double, c[1] as double])
+              .toList();
+
+          final duration = feats[0]['properties']['segments'][0]['duration'];
+          return {'coordinates': coords, 'duration': duration};
+        } else if (resp.statusCode == 429) {
+          // Rate limited → brief backoff
+          await Future.delayed(const Duration(milliseconds: 600));
+        } else {
+          throw Exception('HTTP ${resp.statusCode}');
         }
-        final coordinates =
-            (data['features'][0]['geometry']['coordinates'] as List)
-                .map<List<double>>(
-                    (coord) => [coord[0] as double, coord[1] as double])
-                .toList();
-        final duration =
-            data['features'][0]['properties']['segments'][0]['duration'];
-        return {'coordinates': coordinates, 'duration': duration};
-      } else {
-        throw Exception(
-            'Failed to fetch route. HTTP Status: ${response.statusCode}');
+      } catch (e) {
+        if (attempt > retries) {
+          // give up
+          return {'coordinates': <List<double>>[], 'duration': 0};
+        }
+        // linear backoff
+        await Future.delayed(Duration(milliseconds: 300 * attempt));
       }
-    } catch (e) {
-      print('Error fetching route: $e');
-      return {'coordinates': [], 'duration': 0};
     }
   }
 
   Future<void> _addRouteCoordinates() async {
-    if (_isStartingPointChosen && _startingLocation != null) {
-      _routes.clear();
-      _polylines.clear();
+    if (!_isStartingPointChosen || _startingLocation == null) return;
 
-      for (int i = 0; i < _nextPoints.length; i++) {
-        LatLng start =
-            i == 0 ? _startingLocation! : _nextPoints[i - 1]['location'];
-        LatLng end = _nextPoints[i]['location'];
+    _ensureRoutesCapacity();
 
-        try {
-          final result = await _fetchRouteCoordinatesWithDuration(start, end);
+    // local working copies to avoid setState spam
+    final List<List<List<double>>> newRoutes =
+        List.generate(_nextPoints.length, (_) => <List<double>>[]);
+    final List<dynamic> newDurations =
+        List.filled(_nextPoints.length, 0, growable: false);
 
-          if (result['coordinates'].isNotEmpty) {
-            // Add start point at the beginning of the first segment
-            if (i == 0) {
-              result['coordinates']
-                  .insert(0, [start.longitude, start.latitude]);
-            }
-
-            // Add end point at the end of the last segment
-            if (i == _nextPoints.length - 1) {
-              result['coordinates'].add([end.longitude, end.latitude]);
-            }
-
-            _routes.add(result['coordinates']);
-            setState(() {
-              _nextPoints[i]['duration'] = result['duration'];
-            });
-          }
-        } catch (e) {
-          print('Error adding route coordinates for segment $i: $e');
-        }
-      }
-
-      setState(() {
-        for (final route in _routes) {
-          _polylines.add(
-            Polyline(
-              points: route.map((c) => LatLng(c[1], c[0])).toList(),
-              strokeWidth: 4.0,
-              color: Colors.blue,
-            ),
-          );
-        }
-      });
-
-      await _updateRouteFile();
+    // Build the list of segments we need
+    final List<({int idx, LatLng start, LatLng end})> segments = [];
+    for (int i = 0; i < _nextPoints.length; i++) {
+      final LatLng start = (i == 0)
+          ? _startingLocation!
+          : _nextPoints[i - 1]['location'] as LatLng;
+      final LatLng end = _nextPoints[i]['location'] as LatLng;
+      segments.add((idx: i, start: start, end: end));
     }
+
+    // Process in small batches (concurrency = 2)
+    const int kBatch = 2;
+    for (int offset = 0; offset < segments.length; offset += kBatch) {
+      final batch = segments.sublist(
+        offset,
+        (offset + kBatch > segments.length) ? segments.length : offset + kBatch,
+      );
+
+      // Start all in the batch
+      final futures = batch.map((seg) async {
+        final key = _segKey(seg.start, seg.end);
+
+        Map<String, dynamic>? result = _routeCache[key];
+        if (result == null) {
+          result = await _fetchRouteCoordinatesWithDuration(seg.start, seg.end);
+          _routeCache[key] = result; // cache it
+        }
+
+        // add bounds (first and last points) the same way you did
+        final coords = _toDoublePairList(result['coordinates']);
+
+        if (seg.idx == 0) {
+          coords.insert(0, [seg.start.longitude, seg.start.latitude]);
+        }
+        if (seg.idx == segments.length - 1) {
+          coords.add([seg.end.longitude, seg.end.latitude]);
+        }
+
+        newRoutes[seg.idx] = coords;
+        newDurations[seg.idx] = result['duration'] ?? 0;
+      }).toList();
+
+      // Wait this batch
+      await Future.wait(futures);
+
+      // Gentle pause to avoid bursting
+      await Future.delayed(const Duration(milliseconds: 50));
+    }
+
+    // Single UI update + polyline rebuild + file write
+    setState(() {
+      _routes = newRoutes;
+      for (int i = 0; i < _nextPoints.length; i++) {
+        _nextPoints[i]['duration'] = newDurations[i];
+      }
+      _rebuildPolylines();
+    });
+
+// Kick off file write without blocking the UI spinner.
+    Future.microtask(_updateRouteFile);
   }
 
   Future<void> _fetchSuggestions(String query) async {
@@ -640,6 +692,16 @@ class _MyHomePageState extends State<MyHomePage> {
 
   Future<void> _importFile() async {
     try {
+      setState(() {
+        _polylines.clear();
+        _nextPoints.clear();
+        _routes.clear();
+        _markers.clear();
+        _isStartingPointChosen = false;
+        _startingLocation = null;
+        _startingStreet = null;
+      });
+
       // Open file picker to select the text file
       final result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
@@ -753,7 +815,7 @@ class _MyHomePageState extends State<MyHomePage> {
 
             // Add route coordinates to the polyline
             if (i < parsedRoutes.length) {
-              final routeCoordinates = parsedRoutes[i];
+              final routeCoordinates = _toDoublePairList(parsedRoutes[i]);
               _routes.add(routeCoordinates);
               _polylines.add(
                 Polyline(
@@ -1173,6 +1235,18 @@ class _MyHomePageState extends State<MyHomePage> {
                         onPressed: _undo, // Undo functionality
                         child: const Text('Undo'),
                       ),
+                      const SizedBox(width: 10), // NEW: space before Refresh
+                      ElevatedButton(
+                        onPressed: _isRouting ? null : _onRefreshRoutes,
+                        child: _isRouting
+                            ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child:
+                                    CircularProgressIndicator(strokeWidth: 2),
+                              )
+                            : const Text('Refresh Routes'),
+                      ),
                     ],
                   ),
                   const SizedBox(height: 10), // Add spacing between rows
@@ -1186,7 +1260,7 @@ class _MyHomePageState extends State<MyHomePage> {
 
                       const SizedBox(width: 10), // Space between buttons
                       ElevatedButton(
-                        onPressed: _showExportDialog,
+                        onPressed: _isRouting ? null : _showExportDialog,
                         child: const Text('Export txt'),
                       ),
                     ],
@@ -1200,8 +1274,7 @@ class _MyHomePageState extends State<MyHomePage> {
                       ),
                       const SizedBox(width: 10), // Space between buttons
                       ElevatedButton(
-                        onPressed:
-                            _showExportJsonDialog, // now exports JSON to a file
+                        onPressed: _isRouting ? null : _showExportJsonDialog,
                         child: const Text('Export JSON'),
                       ),
                     ],
@@ -1397,10 +1470,113 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 
   Future<void> _handleChooseTapped() async {
+    if (_isRouting) return; // or show a toast – avoids overlap
     final ok = await _ensureSelectedLocationAndStreetFromInput();
     if (!ok) return;
 
     _choosePoint();
-    _addRouteCoordinates();
+    await _addRouteCoordinates(); // await so it doesn't race the next refresh
+  }
+
+  Future<void> _onRefreshRoutes() async {
+    if (!_isStartingPointChosen ||
+        _startingLocation == null ||
+        _nextPoints.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text(
+                'Nothing to refresh. Add a starting point and at least one next point.')),
+      );
+      return;
+    }
+
+    setState(() {
+      _isRouting = true;
+      _routeCache.clear(); // <—— important
+    });
+
+    try {
+      await _addRouteCoordinates();
+      // Optional: keep the side panel in sync with current routes
+      setState(() {
+        _importedContent = _generateRouteFileContent();
+      });
+    } catch (e, st) {
+      print('Refresh failed: $e\n$st');
+    } finally {
+      if (!mounted) return;
+      setState(() => _isRouting = false);
+    }
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Routes refreshed.')),
+      );
+    }
+  }
+
+  bool _isSegmentValid(List<List<double>> seg) =>
+      seg.isNotEmpty && seg.length >= 2;
+
+  void _ensureRoutesCapacity() {
+    final need = _nextPoints.length;
+    if (_routes.length != need) {
+      _routes = List.generate(need, (_) => <List<double>>[]);
+    }
+  }
+
+  void _rebuildPolylines() {
+    _polylines.clear();
+    for (final seg in _routes) {
+      if (_isSegmentValid(seg)) {
+        _polylines.add(
+          Polyline(
+            points: seg.map((c) => LatLng(c[1], c[0])).toList(),
+            strokeWidth: 4.0,
+            color: Colors.blue,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<Directory> _safeExportDir() async {
+    final dir = Directory('/storage/emulated/0/Documents');
+    if (!await dir.exists()) {
+      await dir.create(recursive: true);
+    }
+    return dir;
+  }
+
+  Future<File> _atomicReplaceWrite(File target, String content) async {
+    // 1) delete old file if it exists
+    if (await target.exists()) {
+      try {
+        await target.delete();
+      } catch (e) {
+        // if delete fails, bubble up so caller can show a toast
+        rethrow;
+      }
+    }
+
+    // 2) write to temp then rename (atomic-ish)
+    final tmp = File('${target.path}.tmp');
+    await tmp.writeAsString(content, encoding: utf8, flush: true);
+    // On Android this is effectively a move in the same filesystem
+    await tmp.rename(target.path);
+
+    return target;
+  }
+
+  List<List<double>> _toDoublePairList(dynamic v) {
+    if (v is List) {
+      return v.map<List<double>>((p) {
+        final a = p as List;
+        final x = (a[0] as num).toDouble();
+        final y = (a[1] as num).toDouble();
+        return <double>[x, y];
+      }).toList();
+    }
+    return <List<double>>[];
   }
 }
