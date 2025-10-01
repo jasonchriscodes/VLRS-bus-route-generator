@@ -459,7 +459,7 @@ class _MyHomePageState extends State<MyHomePage> {
     }
   }
 
-  Future<void> _addRouteCoordinates() async {
+  Future<void> _rebuildAllSegments() async {
     if (!_isStartingPointChosen || _startingLocation == null) return;
 
     _ensureRoutesCapacity();
@@ -498,8 +498,11 @@ class _MyHomePageState extends State<MyHomePage> {
           _routeCache[key] = result; // cache it
         }
 
-        // add bounds (first and last points) the same way you did
-        final coords = _toDoublePairList(result['coordinates']);
+// ---- NEW: make it non-null + null-safe field reads
+        final Map<String, dynamic> r = result!;
+        final coords =
+            _toDoublePairList(r['coordinates'] ?? const <List<double>>[]);
+        final duration = (r['duration'] as num?) ?? 0;
 
         if (seg.idx == 0) {
           coords.insert(0, [seg.start.longitude, seg.start.latitude]);
@@ -509,7 +512,7 @@ class _MyHomePageState extends State<MyHomePage> {
         }
 
         newRoutes[seg.idx] = coords;
-        newDurations[seg.idx] = result['duration'] ?? 0;
+        newDurations[seg.idx] = duration;
       }).toList();
 
       // Wait this batch
@@ -609,85 +612,51 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 
   void _choosePoint() {
-    if (_selectedLocation != null) {
-      setState(() {
-        _saveState(); // Save the current state for undo
+    if (_selectedLocation == null) return;
 
-        if (!_isStartingPointChosen) {
-          // Set the starting point
-          _startingLocation = _selectedLocation;
-          _startingStreet = _currentStreet;
-          _isStartingPointChosen = true;
+    setState(() {
+      _saveState(); // Save the current state for undo
 
-          // Add marker for the starting point
-          _markers.add(Marker(
-            width: 40,
-            height: 40,
-            point: _startingLocation!,
-            child: const Icon(Icons.circle, color: Colors.red, size: 10),
-          ));
+      if (!_isStartingPointChosen) {
+        _startingLocation = _selectedLocation;
+        _startingStreet = _currentStreet;
+        _isStartingPointChosen = true;
 
-          // 🔑 Reset transient selection so the next click uses *new* input/map tap
-          _selectedLocation = null;
-          _currentStreet = null;
-          _suggestions = [];
-          _searchController.clear();
-        } else {
-          // snapshot current selection so we don't lose it when we clear later
-          final LatLng chosen = _selectedLocation!;
-          final String street = _currentStreet ?? 'Unknown Street';
+        _markers.add(Marker(
+          width: 40,
+          height: 40,
+          point: _startingLocation!,
+          child: const Icon(Icons.circle, color: Colors.red, size: 10),
+        ));
 
-          setState(() {
-            _saveState();
+        _selectedLocation = null;
+        _currentStreet = null;
+        _suggestions = [];
+        _searchController.clear();
+      } else {
+        final LatLng chosen = _selectedLocation!;
+        final String street = _currentStreet ?? 'Unknown Street';
 
-            // 1) commit next point
-            _nextPoints.add({'location': chosen, 'street': street});
+        _saveState();
 
-            // 2) marker
-            _markers.add(Marker(
-              width: 40,
-              height: 40,
-              point: chosen,
-              child: const Icon(Icons.circle, color: Colors.red, size: 10),
-            ));
-          });
+        _nextPoints.add({'location': chosen, 'street': street});
 
-          // 3) compute start/end using committed state (not _selectedLocation)
-          final int n = _nextPoints.length;
-          final LatLng start =
-              (n == 1) ? _startingLocation! : _nextPoints[n - 2]['location'];
-          final LatLng end = _nextPoints[n - 1]['location'];
+        _markers.add(Marker(
+          width: 40,
+          height: 40,
+          point: chosen,
+          child: const Icon(Icons.circle, color: Colors.red, size: 10),
+        ));
 
-          // 4) fetch route and update UI
-          _fetchRouteCoordinatesWithDuration(start, end).then((result) {
-            final coordinates = result['coordinates'];
-            final duration = result['duration'];
+        // clear transient selection
+        _selectedLocation = null;
+        _currentStreet = null;
+        _searchController.clear();
+        _suggestions = [];
+      }
+    });
 
-            if (coordinates.isNotEmpty) {
-              setState(() {
-                _routes.add(coordinates);
-                _polylines.add(Polyline(
-                  points: coordinates.map((c) => LatLng(c[1], c[0])).toList(),
-                  strokeWidth: 4.0,
-                  color: Colors.blue,
-                ));
-                _nextPoints.last['duration'] = duration;
-              });
-            }
-          });
-
-          // 5) 🔑 clear transient selection so the next add starts fresh
-          setState(() {
-            _selectedLocation = null;
-            _currentStreet = null;
-            _searchController.clear();
-            _suggestions = [];
-          });
-        }
-      });
-
-      _updateRouteFile(); // Update the route file
-    }
+    _updateRouteFile();
   }
 
   Future<void> _importFile() async {
@@ -1007,10 +976,16 @@ class _MyHomePageState extends State<MyHomePage> {
                 Row(
                   children: [
                     ElevatedButton(
-                      onPressed: _handleChooseTapped,
-                      child: Text(_isStartingPointChosen
-                          ? 'Choose Next Point'
-                          : 'Choose Starting Point'),
+                      onPressed: _isRouting ? null : _handleChooseTapped,
+                      child: _isRouting
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : Text(_isStartingPointChosen
+                              ? 'Choose Next Point'
+                              : 'Choose Starting Point'),
                     ),
                     const SizedBox(width: 10),
                     IconButton(
@@ -1470,12 +1445,21 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 
   Future<void> _handleChooseTapped() async {
-    if (_isRouting) return; // or show a toast – avoids overlap
+    if (_isRouting) return;
     final ok = await _ensureSelectedLocationAndStreetFromInput();
     if (!ok) return;
 
-    _choosePoint();
-    await _addRouteCoordinates(); // await so it doesn't race the next refresh
+    setState(() => _isRouting = true);
+    try {
+      _choosePoint(); // commit starting point or next point
+      if (_isStartingPointChosen && _nextPoints.isNotEmpty) {
+        // only fetch the newest leg
+        await _addLastSegmentRoute();
+      }
+    } finally {
+      if (!mounted) return;
+      setState(() => _isRouting = false);
+    }
   }
 
   Future<void> _onRefreshRoutes() async {
@@ -1492,12 +1476,11 @@ class _MyHomePageState extends State<MyHomePage> {
 
     setState(() {
       _isRouting = true;
-      _routeCache.clear(); // <—— important
+      _routeCache.clear();
     });
 
     try {
-      await _addRouteCoordinates();
-      // Optional: keep the side panel in sync with current routes
+      await _rebuildAllSegments(); // <— renamed from _addRouteCoordinates()
       setState(() {
         _importedContent = _generateRouteFileContent();
       });
@@ -1578,5 +1561,61 @@ class _MyHomePageState extends State<MyHomePage> {
       }).toList();
     }
     return <List<double>>[];
+  }
+
+  Future<void> _addLastSegmentRoute() async {
+    if (!_isStartingPointChosen ||
+        _startingLocation == null ||
+        _nextPoints.isEmpty) return;
+
+    final int i = _nextPoints.length - 1;
+    final LatLng start = (i == 0)
+        ? _startingLocation!
+        : _nextPoints[i - 1]['location'] as LatLng;
+    final LatLng end = _nextPoints[i]['location'] as LatLng;
+
+    // cache lookup
+    final key = _segKey(start, end);
+    Map<String, dynamic>? result = _routeCache[key];
+    result ??= await _fetchRouteCoordinatesWithDuration(start, end);
+    _routeCache[key] = result;
+
+    // ---- NEW: make it non-null + null-safe field reads
+    final Map<String, dynamic> r = result!;
+    final coords =
+        _toDoublePairList(r['coordinates'] ?? const <List<double>>[]);
+    final duration = (r['duration'] as num?) ?? 0;
+
+    // ensure the segment explicitly starts/ends at the chosen points
+    if (i == 0) {
+      coords.insert(0, [start.longitude, start.latitude]);
+    }
+    // always end at this last point
+    if (coords.isEmpty ||
+        coords.last[0] != end.longitude ||
+        coords.last[1] != end.latitude) {
+      coords.add([end.longitude, end.latitude]);
+    }
+
+    // extend internal arrays if needed
+    if (_routes.length < _nextPoints.length) {
+      _routes.addAll(List.generate(
+          _nextPoints.length - _routes.length, (_) => <List<double>>[]));
+    }
+
+    setState(() {
+      _routes[i] = coords;
+      _nextPoints[i]['duration'] = duration;
+
+      // append a new polyline for this last segment only
+      _polylines.add(Polyline(
+        points: coords.map((c) => LatLng(c[1], c[0])).toList(),
+        strokeWidth: 4.0,
+        color: Colors.blue,
+      ));
+    });
+
+    // persist to file (non-blocking UI)
+    Future.microtask(_updateRouteFile);
   }
 }
