@@ -13,6 +13,7 @@ import 'package:open_file/open_file.dart';
 import 'dart:collection';
 
 bool _isRouting = false;
+bool _isPanelCollapsed = false;
 
 String _importedContent = '';
 List<Polyline> _polylines = [];
@@ -59,6 +60,10 @@ class _MyHomePageState extends State<MyHomePage> {
   // Cache: start|end -> {'coordinates': List<List<double>>, 'duration': num}
   final Map<String, Map<String, dynamic>> _routeCache = {};
 
+  static const double _collapsedHeight = 48; // height when collapsed
+  static const Duration _panelAnimDur = Duration(milliseconds: 220);
+  static const Curve _panelAnimCurve = Curves.easeInOut;
+
   String _segKey(LatLng a, LatLng b) =>
       '${a.latitude},${a.longitude}|${b.latitude},${b.longitude}';
 
@@ -66,6 +71,10 @@ class _MyHomePageState extends State<MyHomePage> {
 
   // Add a stack to store the history of states
   final List<Map<String, dynamic>> _stateHistory = [];
+
+  void _togglePanel() {
+    setState(() => _isPanelCollapsed = !_isPanelCollapsed);
+  }
 
   void _saveState() {
     _stateHistory.add({
@@ -942,14 +951,17 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 
   @override
+  @override
   Widget build(BuildContext context) {
-    final double sectionHeight =
-        MediaQuery.of(context).size.height * 0.3; // Adjust section height
+    final double sectionHeight = MediaQuery.of(context).size.height * 0.3;
+    final double panelHeight =
+        _isPanelCollapsed ? _collapsedHeight : sectionHeight;
 
     return Scaffold(
       appBar: AppBar(title: const Text('Map Viewer')),
       body: Column(
         children: [
+          // Search bar row -----------------------------------------------------
           Padding(
             padding: const EdgeInsets.all(10),
             child: Row(
@@ -959,20 +971,21 @@ class _MyHomePageState extends State<MyHomePage> {
                     controller: _searchController,
                     decoration: InputDecoration(
                       labelText: 'Search for a location',
-                      border: OutlineInputBorder(),
+                      border: const OutlineInputBorder(),
                       suffixIcon: IconButton(
-                        icon: Icon(Icons.clear),
+                        icon: const Icon(Icons.clear),
                         onPressed: () {
                           setState(() {
-                            _searchController.clear(); // Clear the text field
-                            _suggestions = []; // Clear search suggestions
+                            _searchController.clear();
+                            _suggestions = [];
                           });
                         },
                       ),
                     ),
-                    onChanged: (value) => _fetchSuggestions(value),
+                    onChanged: _fetchSuggestions,
                   ),
                 ),
+                const SizedBox(width: 8),
                 Row(
                   children: [
                     ElevatedButton(
@@ -998,6 +1011,8 @@ class _MyHomePageState extends State<MyHomePage> {
               ],
             ),
           ),
+
+          // Suggestions list ---------------------------------------------------
           if (_suggestions.isNotEmpty)
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 10),
@@ -1013,6 +1028,8 @@ class _MyHomePageState extends State<MyHomePage> {
                 },
               ),
             ),
+
+          // Map ---------------------------------------------------------------
           Expanded(
             child: FlutterMap(
               mapController: _mapController,
@@ -1022,7 +1039,7 @@ class _MyHomePageState extends State<MyHomePage> {
                 onTap: (tapPosition, point) {
                   setState(() {
                     _selectedLocation = point;
-                    _currentStreet = null; // Reset street name for fetching
+                    _currentStreet = null;
                   });
                   _fetchStreetName(point);
                 },
@@ -1030,24 +1047,17 @@ class _MyHomePageState extends State<MyHomePage> {
               children: [
                 TileLayer(
                   urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                  // Reduce extra tile requests
                   panBuffer: 0,
-                  // Use your actual Android applicationId / iOS bundle id:
                   userAgentPackageName: 'com.jason.publisher',
-                  // Add a clear, contactable User-Agent (mailto is fine if no website)
                   tileProvider: NetworkTileProvider(
-                    headers: {
+                    headers: Map<String, String>.from({
                       'User-Agent':
                           'BusFlow-Personal/0.1 (+mailto:vlrs13542@gmail.com)',
-                    },
+                    }),
                   ),
                 ),
-                PolylineLayer(
-                  polylines: _polylines,
-                ),
-                MarkerLayer(
-                  markers: _markers, // Display markers from the `_markers` list
-                ),
+                PolylineLayer(polylines: _polylines),
+                MarkerLayer(markers: _markers),
                 if (_selectedLocation != null)
                   MarkerLayer(
                     markers: [
@@ -1056,7 +1066,7 @@ class _MyHomePageState extends State<MyHomePage> {
                         height: 40,
                         point: _selectedLocation!,
                         child: Transform.translate(
-                          offset: const Offset(0, -20), // Move anchor to bottom
+                          offset: const Offset(0, -20),
                           child: Image.asset(
                             'assets/location-pin.png',
                             width: 40,
@@ -1067,196 +1077,302 @@ class _MyHomePageState extends State<MyHomePage> {
                     ],
                   ),
               ],
-              nonRotatedChildren: [
+              nonRotatedChildren: const [
                 RichAttributionWidget(
                   attributions: [
                     TextSourceAttribution(
                       'OpenStreetMap contributors',
                       prependCopyright: true,
-                      onTap: () => launchUrl(
-                        Uri.parse('https://www.openstreetmap.org/copyright'),
-                      ),
                     ),
                   ],
                 ),
               ],
             ),
           ),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Expanded(
-                child: Container(
-                  height: sectionHeight,
+
+          // Bottom panel (collapsible) ----------------------------------------
+          AnimatedContainer(
+            duration: _panelAnimDur,
+            curve: _panelAnimCurve,
+            height: panelHeight,
+            width: double.infinity,
+            child: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                // Panel body
+                Material(
+                  elevation: 4,
                   color: Colors.white,
-                  child: Scrollbar(
-                    thumbVisibility: true,
-                    controller: _scrollController,
-                    child: SingleChildScrollView(
-                      controller: _scrollController,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          if (_selectedLocation != null) ...[
-                            Text(
-                              'Selected Location:',
-                              style: const TextStyle(
-                                  fontSize: 14, fontWeight: FontWeight.bold),
-                            ),
-                            Text(
-                              'Latitude: ${_selectedLocation!.latitude}, Longitude: ${_selectedLocation!.longitude}',
-                              style: const TextStyle(fontSize: 14),
-                            ),
-                            Text(
-                              'Street Name: ${_currentStreet ?? "Fetching..."}',
-                              style: const TextStyle(fontSize: 14),
-                            ),
-                          ] else if (_startingLocation == null) ...[
-                            const Text(
-                              'Tap on the map to select a location or import data.',
-                              style: TextStyle(fontSize: 14),
-                            ),
-                          ],
-                          if (_isStartingPointChosen &&
-                              _startingLocation != null) ...[
-                            const SizedBox(height: 10),
-                            Text(
-                              'Starting Point is chosen:',
-                              style: const TextStyle(
-                                  fontSize: 14, fontWeight: FontWeight.bold),
-                            ),
-                            Text(
-                              '$_startingLocation at $_startingStreet',
-                              style: const TextStyle(fontSize: 14),
-                            ),
-                          ],
-                          if (_nextPoints.isNotEmpty) ...[
-                            const SizedBox(height: 10),
-                            Text(
-                              'Next Points:',
-                              style: const TextStyle(
-                                  fontSize: 14, fontWeight: FontWeight.bold),
-                            ),
-                            ..._nextPoints.asMap().entries.map((entry) {
-                              int index = entry.key;
-                              Map<String, dynamic> point = entry.value;
-                              final routeCoordinates =
-                                  index < _routes.length ? _routes[index] : [];
-                              final durationMinutes =
-                                  (point['duration'] ?? 0) / 60;
-                              return Column(
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      // LEFT: details
+                      Expanded(
+                        child: Container(
+                          height: double.infinity,
+                          color: Colors.white,
+                          child: Scrollbar(
+                            thumbVisibility: true,
+                            controller: _scrollController,
+                            child: SingleChildScrollView(
+                              controller: _scrollController,
+                              padding: const EdgeInsets.all(12),
+                              child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Text(
-                                    'Next Point: ${point['location']} at ${point['street']}',
-                                    style: const TextStyle(fontSize: 14),
-                                  ),
-                                  Text(
-                                    'Duration: ${durationMinutes.toStringAsFixed(1)} minutes',
-                                    style: const TextStyle(
-                                        fontSize: 14, color: Colors.black),
-                                  ),
-                                  if (routeCoordinates.isNotEmpty)
-                                    Text(
-                                      'Route Coordinates: ${routeCoordinates.map((c) => "[${c[0]}, ${c[1]}]").join(", ")}',
-                                      style: const TextStyle(fontSize: 12),
-                                    ),
+                                  if (!_isPanelCollapsed) ...[
+                                    if (_selectedLocation != null) ...[
+                                      const Text(
+                                        'Selected Location:',
+                                        style: TextStyle(
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                      Text(
+                                        'Latitude: ${_selectedLocation!.latitude}, Longitude: ${_selectedLocation!.longitude}',
+                                        style: const TextStyle(fontSize: 14),
+                                      ),
+                                      Text(
+                                        'Street Name: ${_currentStreet ?? "Fetching..."}',
+                                        style: const TextStyle(fontSize: 14),
+                                      ),
+                                    ] else if (_startingLocation == null) ...[
+                                      const Text(
+                                        'Tap on the map to select a location or import data.',
+                                        style: TextStyle(fontSize: 14),
+                                      ),
+                                    ],
+                                    if (_isStartingPointChosen &&
+                                        _startingLocation != null) ...[
+                                      const SizedBox(height: 10),
+                                      const Text(
+                                        'Starting Point is chosen:',
+                                        style: TextStyle(
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                      Text(
+                                        '$_startingLocation at $_startingStreet',
+                                        style: const TextStyle(fontSize: 14),
+                                      ),
+                                    ],
+                                    if (_nextPoints.isNotEmpty) ...[
+                                      const SizedBox(height: 10),
+                                      const Text(
+                                        'Next Points:',
+                                        style: TextStyle(
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                      ..._nextPoints
+                                          .asMap()
+                                          .entries
+                                          .map((entry) {
+                                        final int index = entry.key;
+                                        final Map<String, dynamic> point =
+                                            entry.value;
+                                        final routeCoordinates =
+                                            index < _routes.length
+                                                ? _routes[index]
+                                                : <List<double>>[];
+                                        final durationMinutes =
+                                            (point['duration'] ?? 0) / 60;
+                                        return Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              'Next Point: ${point['location']} at ${point['street']}',
+                                              style:
+                                                  const TextStyle(fontSize: 14),
+                                            ),
+                                            Text(
+                                              'Duration: ${durationMinutes.toStringAsFixed(1)} minutes',
+                                              style: const TextStyle(
+                                                fontSize: 14,
+                                                color: Colors.black,
+                                              ),
+                                            ),
+                                            if (routeCoordinates.isNotEmpty)
+                                              Text(
+                                                'Route Coordinates: ${routeCoordinates.map((c) => "[${c[0]}, ${c[1]}]").join(", ")}',
+                                                style: const TextStyle(
+                                                    fontSize: 12),
+                                              ),
+                                            const SizedBox(height: 8),
+                                          ],
+                                        );
+                                      }).toList(),
+                                    ],
+                                    if (_importedContent.isNotEmpty) ...[
+                                      const SizedBox(height: 10),
+                                      const Text(
+                                        'Imported Data:',
+                                        style: TextStyle(
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                      Container(
+                                        height: 200,
+                                        decoration: BoxDecoration(
+                                          border:
+                                              Border.all(color: Colors.grey),
+                                          borderRadius:
+                                              BorderRadius.circular(4),
+                                        ),
+                                        child: Scrollbar(
+                                          thumbVisibility: true,
+                                          child: SingleChildScrollView(
+                                            controller: _scrollController,
+                                            padding: const EdgeInsets.all(8),
+                                            child: Text(
+                                              _importedContent,
+                                              style:
+                                                  const TextStyle(fontSize: 14),
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ],
                                 ],
-                              );
-                            }).toList()
-                          ],
-                          if (_importedContent.isNotEmpty) ...[
-                            Text(
-                              'Imported Data:',
-                              style: const TextStyle(
-                                  fontSize: 14, fontWeight: FontWeight.bold),
-                            ),
-                            Container(
-                              height: sectionHeight,
-                              decoration: BoxDecoration(
-                                border: Border.all(color: Colors.grey),
-                                borderRadius: BorderRadius.circular(4),
                               ),
-                              child: Scrollbar(
-                                thumbVisibility: true,
-                                child: SingleChildScrollView(
-                                  controller: _scrollController,
-                                  child: Text(
-                                    _importedContent,
-                                    style: const TextStyle(fontSize: 14),
+                            ),
+                          ),
+                        ),
+                      ),
+
+                      // RIGHT: actions  ------------------------------------------------------------
+                      AnimatedCrossFade(
+                        duration: _panelAnimDur,
+                        sizeCurve: _panelAnimCurve,
+                        crossFadeState: _isPanelCollapsed
+                            ? CrossFadeState.showSecond
+                            : CrossFadeState.showFirst,
+                        firstChild: Container(
+                          width: 260,
+                          color: Colors.white,
+                          padding: const EdgeInsets.symmetric(horizontal: 8),
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              // Row 1
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  const SizedBox(width: 10),
+                                  ElevatedButton(
+                                    onPressed: _importFile,
+                                    child: const Text('Import'),
                                   ),
-                                ),
+                                  const SizedBox(width: 10),
+                                  ElevatedButton(
+                                    onPressed: _undo,
+                                    child: const Text('Undo'),
+                                  ),
+                                  const SizedBox(width: 10),
+                                  ElevatedButton(
+                                    onPressed:
+                                        _isRouting ? null : _onRefreshRoutes,
+                                    child: _isRouting
+                                        ? const SizedBox(
+                                            width: 16,
+                                            height: 16,
+                                            child: CircularProgressIndicator(
+                                                strokeWidth: 2),
+                                          )
+                                        : const Text('Refresh Routes'),
+                                  ),
+                                ],
                               ),
+                              const SizedBox(height: 10),
+                              // Row 2
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  ElevatedButton(
+                                    onPressed: _deleteRoutes,
+                                    child: const Text('Delete Routes'),
+                                  ),
+                                  const SizedBox(width: 10),
+                                  ElevatedButton(
+                                    onPressed:
+                                        _isRouting ? null : _showExportDialog,
+                                    child: const Text('Export txt'),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 10),
+                              // Row 3
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  ElevatedButton(
+                                    onPressed: backToStart,
+                                    child: const Text('Back To Start'),
+                                  ),
+                                  const SizedBox(width: 10),
+                                  ElevatedButton(
+                                    onPressed: _isRouting
+                                        ? null
+                                        : _showExportJsonDialog,
+                                    child: const Text('Export JSON'),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                        secondChild:
+                            const SizedBox.shrink(), // hidden when collapsed
+                      ),
+                    ],
+                  ),
+                ),
+
+                // Handle (expand/collapse)
+                Positioned(
+                  top: -16,
+                  left: 0,
+                  right: 0,
+                  child: Center(
+                    child: GestureDetector(
+                      onTap: _togglePanel,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(16),
+                          boxShadow: const [
+                            BoxShadow(
+                              blurRadius: 8,
+                              color: Colors.black26,
+                              offset: Offset(0, 2),
                             ),
-                          ]
-                        ],
+                          ],
+                          border: Border.all(color: Colors.black12),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(_isPanelCollapsed
+                                ? Icons.keyboard_arrow_up
+                                : Icons.keyboard_arrow_down),
+                            const SizedBox(width: 6),
+                            Text(_isPanelCollapsed ? 'Expand' : 'Collapse'),
+                          ],
+                        ),
                       ),
                     ),
                   ),
                 ),
-              ),
-              Column(
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const SizedBox(width: 10), // Space between buttons
-                      ElevatedButton(
-                        onPressed: _importFile, // Import functionality
-                        child: const Text('Import'),
-                      ),
-                      const SizedBox(width: 10), // Space between buttons
-                      ElevatedButton(
-                        onPressed: _undo, // Undo functionality
-                        child: const Text('Undo'),
-                      ),
-                      const SizedBox(width: 10), // NEW: space before Refresh
-                      ElevatedButton(
-                        onPressed: _isRouting ? null : _onRefreshRoutes,
-                        child: _isRouting
-                            ? const SizedBox(
-                                width: 16,
-                                height: 16,
-                                child:
-                                    CircularProgressIndicator(strokeWidth: 2),
-                              )
-                            : const Text('Refresh Routes'),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 10), // Add spacing between rows
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      ElevatedButton(
-                        onPressed: _deleteRoutes, // Updated method name
-                        child: const Text('Delete Routes'),
-                      ),
-
-                      const SizedBox(width: 10), // Space between buttons
-                      ElevatedButton(
-                        onPressed: _isRouting ? null : _showExportDialog,
-                        child: const Text('Export txt'),
-                      ),
-                    ],
-                  ),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      ElevatedButton(
-                        onPressed: backToStart, // Move to starting point
-                        child: const Text('Back To Start'),
-                      ),
-                      const SizedBox(width: 10), // Space between buttons
-                      ElevatedButton(
-                        onPressed: _isRouting ? null : _showExportJsonDialog,
-                        child: const Text('Export JSON'),
-                      ),
-                    ],
-                  )
-                ],
-              ),
-            ],
+              ],
+            ),
           ),
         ],
       ),
