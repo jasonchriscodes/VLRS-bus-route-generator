@@ -29,9 +29,32 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    const seed = Color(0xFF47326C);
+    final scheme = ColorScheme.fromSeed(seedColor: seed);
+
     return MaterialApp(
       title: 'Map Viewer',
-      theme: ThemeData(primarySwatch: Colors.blue),
+      theme: ThemeData(
+        // keep old compact metrics so layout doesn't shift
+        useMaterial3: false,
+        colorScheme: scheme,
+
+        // ✅ Only color, not size
+        elevatedButtonTheme: ElevatedButtonThemeData(
+          style: ButtonStyle(
+            backgroundColor: MaterialStatePropertyAll<Color>(scheme.primary),
+            foregroundColor: MaterialStatePropertyAll<Color>(scheme.onPrimary),
+            // keep buttons compact like before
+            minimumSize: const MaterialStatePropertyAll(Size(0, 36)),
+            padding: const MaterialStatePropertyAll(
+              EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            ),
+          ),
+        ),
+
+        // remove icon/text button themes to avoid affecting your Image.asset icon
+        // (leave defaults so layout stays the same)
+      ),
       home: const MyHomePage(),
     );
   }
@@ -988,17 +1011,13 @@ class _MyHomePageState extends State<MyHomePage> {
                 const SizedBox(width: 8),
                 Row(
                   children: [
-                    ElevatedButton(
-                      onPressed: _isRouting ? null : _handleChooseTapped,
-                      child: _isRouting
-                          ? const SizedBox(
-                              width: 16,
-                              height: 16,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : Text(_isStartingPointChosen
-                              ? 'Choose Next Point'
-                              : 'Choose Starting Point'),
+                    CustomButton(
+                      expanded: false,
+                      label: _isStartingPointChosen
+                          ? 'Choose Next Point'
+                          : 'Choose Starting Point',
+                      loading: _isRouting,
+                      onTap: _isRouting ? null : _handleChooseTapped,
                     ),
                     const SizedBox(width: 10),
                     IconButton(
@@ -1265,27 +1284,23 @@ class _MyHomePageState extends State<MyHomePage> {
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
                                   const SizedBox(width: 10),
-                                  ElevatedButton(
-                                    onPressed: _importFile,
-                                    child: const Text('Import'),
+                                  CustomButton(
+                                    label: 'Import',
+                                    onTap: _importFile,
+                                    leading: const Icon(Icons.file_open),
                                   ),
                                   const SizedBox(width: 10),
-                                  ElevatedButton(
-                                    onPressed: _undo,
-                                    child: const Text('Undo'),
+                                  CustomButton(
+                                    label: 'Undo',
+                                    onTap: _undo,
+                                    leading: const Icon(Icons.undo),
                                   ),
                                   const SizedBox(width: 10),
-                                  ElevatedButton(
-                                    onPressed:
-                                        _isRouting ? null : _onRefreshRoutes,
-                                    child: _isRouting
-                                        ? const SizedBox(
-                                            width: 16,
-                                            height: 16,
-                                            child: CircularProgressIndicator(
-                                                strokeWidth: 2),
-                                          )
-                                        : const Text('Refresh Routes'),
+                                  CustomButton(
+                                    label: 'Refresh Routes',
+                                    loading: _isRouting,
+                                    onTap: _isRouting ? null : _onRefreshRoutes,
+                                    leading: const Icon(Icons.refresh),
                                   ),
                                 ],
                               ),
@@ -1294,15 +1309,17 @@ class _MyHomePageState extends State<MyHomePage> {
                               Row(
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
-                                  ElevatedButton(
-                                    onPressed: _deleteRoutes,
-                                    child: const Text('Delete Routes'),
+                                  CustomButton(
+                                    label: 'Delete Routes',
+                                    onTap: _deleteRoutes,
+                                    leading: const Icon(Icons.delete_outline),
                                   ),
                                   const SizedBox(width: 10),
-                                  ElevatedButton(
-                                    onPressed:
+                                  CustomButton(
+                                    label: 'Export txt',
+                                    onTap:
                                         _isRouting ? null : _showExportDialog,
-                                    child: const Text('Export txt'),
+                                    leading: const Icon(Icons.save_alt),
                                   ),
                                 ],
                               ),
@@ -1311,16 +1328,18 @@ class _MyHomePageState extends State<MyHomePage> {
                               Row(
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
-                                  ElevatedButton(
-                                    onPressed: backToStart,
-                                    child: const Text('Back To Start'),
+                                  CustomButton(
+                                    label: 'Back To Start',
+                                    onTap: backToStart,
+                                    leading: const Icon(Icons.undo_rounded),
                                   ),
                                   const SizedBox(width: 10),
-                                  ElevatedButton(
-                                    onPressed: _isRouting
+                                  CustomButton(
+                                    label: 'Export JSON',
+                                    onTap: _isRouting
                                         ? null
                                         : _showExportJsonDialog,
-                                    child: const Text('Export JSON'),
+                                    leading: const Icon(Icons.data_object),
                                   ),
                                 ],
                               ),
@@ -1733,5 +1752,131 @@ class _MyHomePageState extends State<MyHomePage> {
 
     // persist to file (non-blocking UI)
     Future.microtask(_updateRouteFile);
+  }
+}
+
+// --- CustomButton ------------------------------------------------------------
+class CustomButton extends StatefulWidget {
+  final String label;
+  final VoidCallback? onTap;
+  final bool loading;
+  final bool expanded;
+  final EdgeInsets padding;
+  final double minHeight;
+  final double borderRadius;
+  final Color? color; // background
+  final Color? textColor; // label
+  final Widget? leading; // optional leading icon
+
+  const CustomButton({
+    super.key,
+    required this.label,
+    required this.onTap,
+    this.loading = false,
+    this.expanded = false,
+    this.padding = const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+    this.minHeight = 36,
+    this.borderRadius = 10,
+    this.color,
+    this.textColor,
+    this.leading,
+  });
+
+  @override
+  State<CustomButton> createState() => _CustomButtonState();
+}
+
+class _CustomButtonState extends State<CustomButton> {
+  bool _pressed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final enabled = widget.onTap != null && !widget.loading;
+
+    final bg =
+        widget.color ?? (enabled ? scheme.primary : scheme.surfaceVariant);
+    final fg = widget.textColor ??
+        (enabled ? scheme.onPrimary : scheme.onSurfaceVariant);
+
+    final content = Row(
+      mainAxisSize: MainAxisSize.min,
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        if (widget.loading)
+          SizedBox(
+            width: 16,
+            height: 16,
+            child: CircularProgressIndicator(
+                strokeWidth: 2, valueColor: AlwaysStoppedAnimation<Color>(fg)),
+          )
+        else if (widget.leading != null) ...[
+          Padding(
+              padding: const EdgeInsets.only(right: 6),
+              child: IconTheme(
+                  data: IconThemeData(size: 18, color: fg),
+                  child: widget.leading!)),
+        ],
+        Flexible(
+          child: Text(
+            widget.label,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: fg,
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              letterSpacing: .2,
+            ),
+          ),
+        ),
+      ],
+    );
+
+    final child = AnimatedContainer(
+      duration: const Duration(milliseconds: 120),
+      curve: Curves.easeOut,
+      padding: widget.padding,
+      constraints: BoxConstraints(minHeight: widget.minHeight),
+      decoration: BoxDecoration(
+        color: bg.withOpacity(_pressed ? 0.92 : 1),
+        borderRadius: BorderRadius.circular(widget.borderRadius),
+        boxShadow: enabled
+            ? [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.08),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                ),
+              ]
+            : [],
+        border: Border.all(
+          color: enabled ? scheme.primary : scheme.outlineVariant,
+          width: 1,
+        ),
+      ),
+      child: content,
+    );
+
+    final tappable = GestureDetector(
+      onTapDown: (_) {
+        if (enabled) setState(() => _pressed = true);
+      },
+      onTapCancel: () {
+        if (_pressed) setState(() => _pressed = false);
+      },
+      onTapUp: (_) {
+        if (_pressed) setState(() => _pressed = false);
+      },
+      onTap: enabled ? widget.onTap : null,
+      child: AnimatedScale(
+        duration: const Duration(milliseconds: 80),
+        scale: _pressed ? 0.98 : 1.0,
+        child: child,
+      ),
+    );
+
+    return widget.expanded
+        ? SizedBox(width: double.infinity, child: tappable)
+        : tappable;
   }
 }
