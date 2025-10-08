@@ -1266,88 +1266,103 @@ class _MyHomePageState extends State<MyHomePage> {
                       ),
 
                       // RIGHT: actions  ------------------------------------------------------------
-                      AnimatedCrossFade(
-                        duration: _panelAnimDur,
-                        sizeCurve: _panelAnimCurve,
-                        crossFadeState: _isPanelCollapsed
-                            ? CrossFadeState.showSecond
-                            : CrossFadeState.showFirst,
-                        firstChild: Container(
-                          width: 260,
-                          color: Colors.white,
-                          padding: const EdgeInsets.symmetric(horizontal: 8),
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              // Row 1
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  const SizedBox(width: 10),
-                                  CustomButton(
-                                    label: 'Import',
-                                    onTap: _importFile,
-                                    leading: const Icon(Icons.file_open),
-                                  ),
-                                  const SizedBox(width: 10),
-                                  CustomButton(
-                                    label: 'Undo',
-                                    onTap: _undo,
-                                    leading: const Icon(Icons.undo),
-                                  ),
-                                  const SizedBox(width: 10),
-                                  CustomButton(
-                                    label: 'Refresh Routes',
-                                    loading: _isRouting,
-                                    onTap: _isRouting ? null : _onRefreshRoutes,
-                                    leading: const Icon(Icons.refresh),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 10),
-                              // Row 2
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  CustomButton(
-                                    label: 'Delete Routes',
-                                    onTap: _deleteRoutes,
-                                    leading: const Icon(Icons.delete_outline),
-                                  ),
-                                  const SizedBox(width: 10),
-                                  CustomButton(
-                                    label: 'Export txt',
-                                    onTap:
-                                        _isRouting ? null : _showExportDialog,
-                                    leading: const Icon(Icons.save_alt),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 10),
-                              // Row 3
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  CustomButton(
-                                    label: 'Back To Start',
-                                    onTap: backToStart,
-                                    leading: const Icon(Icons.undo_rounded),
-                                  ),
-                                  const SizedBox(width: 10),
-                                  CustomButton(
-                                    label: 'Export JSON',
-                                    onTap: _isRouting
-                                        ? null
-                                        : _showExportJsonDialog,
-                                    leading: const Icon(Icons.data_object),
-                                  ),
-                                ],
-                              ),
-                            ],
+                      Padding(
+                        padding: const EdgeInsets.only(right: 12),
+                        child: AnimatedCrossFade(
+                          duration: _panelAnimDur,
+                          sizeCurve: _panelAnimCurve,
+                          crossFadeState: _isPanelCollapsed
+                              ? CrossFadeState.showSecond
+                              : CrossFadeState.showFirst,
+                          firstChild: Container(
+                            // was: width: 260,
+                            width:
+                                360, // 👈 give a bit more room so "Refresh / Export" fit
+                            color: Colors.white,
+                            padding: const EdgeInsets.symmetric(horizontal: 8),
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                // Row 1
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    // const SizedBox(width: 10), // ❌ remove this leading spacer
+                                    CustomButton(
+                                      label: 'Import',
+                                      onTap: _importFile,
+                                      leading: const Icon(Icons.file_open),
+                                      // keep default padding
+                                    ),
+                                    const SizedBox(width: 10),
+                                    CustomButton(
+                                      label: 'Undo',
+                                      onTap: _undo,
+                                      leading: const Icon(Icons.undo),
+                                    ),
+                                    const SizedBox(width: 10),
+                                    CustomButton(
+                                      label: 'Refresh Routes',
+                                      loading: _isRouting,
+                                      onTap:
+                                          _isRouting ? null : _onRefreshRoutes,
+                                      leading: const Icon(Icons.refresh),
+                                      // 👇 slightly tighter padding for long label
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 10, vertical: 8),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 10),
+
+                                // Row 2
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    CustomButton(
+                                      label: 'Delete Routes',
+                                      onTap: _deleteRoutes,
+                                      leading: const Icon(Icons.delete_outline),
+                                    ),
+                                    const SizedBox(width: 10),
+                                    CustomButton(
+                                      label: 'Export txt',
+                                      onTap:
+                                          _isRouting ? null : _showExportDialog,
+                                      leading: const Icon(Icons.save_alt),
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 10, vertical: 8),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 10),
+
+                                // Row 3
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    CustomButton(
+                                      label: 'Back To Start',
+                                      onTap: backToStart,
+                                      leading: const Icon(Icons.undo_rounded),
+                                    ),
+                                    const SizedBox(width: 10),
+                                    CustomButton(
+                                      label: 'Export JSON',
+                                      onTap: _isRouting
+                                          ? null
+                                          : _showExportJsonDialog,
+                                      leading: const Icon(Icons.data_object),
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 10, vertical: 8),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
                           ),
+                          secondChild: const SizedBox.shrink(),
                         ),
-                        secondChild:
-                            const SizedBox.shrink(), // hidden when collapsed
                       ),
                     ],
                   ),
